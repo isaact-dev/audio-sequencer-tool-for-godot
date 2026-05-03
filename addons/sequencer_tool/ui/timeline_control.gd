@@ -54,6 +54,8 @@ var blocked_action_flash_outline_color := Color(0.949, 0.302, 0.302, 0.486)
 var fake_clips: Array[Dictionary] = []
 
 var track_names: Array[String] = []
+var track_mutes: Array[bool] = []
+var track_volumes: Array[float] = []
 var track_colors: Array[Color] = []
 
 var selected_clip_index: int = -1
@@ -180,6 +182,34 @@ func set_track_count(value: int) -> void:
 	_emit_tracks_changed()
 	queue_redraw()
 
+func set_track_muted(track_index: int, value: bool) -> void:
+	if track_index < 0 or track_index >= track_count:
+		return
+	if track_index >= track_mutes.size():
+		return
+	if track_mutes[track_index] == value:
+		return
+
+	track_mutes[track_index] = value
+	_emit_sequence_changed()
+	_emit_tracks_changed()
+	queue_redraw()
+
+
+func set_track_volume(track_index: int, value: float) -> void:
+	if track_index < 0 or track_index >= track_count:
+		return
+	if track_index >= track_volumes.size():
+		return
+
+	var resolved_value := max(0.0, value)
+	if is_equal_approx(track_volumes[track_index], resolved_value):
+		return
+
+	track_volumes[track_index] = resolved_value
+	_emit_sequence_changed()
+	_emit_tracks_changed()
+	queue_redraw()
 
 func _timeline_to_x(position: float) -> float:
 	return track_label_width + (position * pixels_per_subdivision)
@@ -482,14 +512,34 @@ func _create_default_track_name(track_index: int) -> String:
 func _ensure_track_names_size() -> void:
 	while track_names.size() < track_count:
 		track_names.append(_create_default_track_name(track_names.size()))
-
-
 	while track_names.size() > track_count:
 		track_names.remove_at(track_names.size() - 1)
+
+	while track_mutes.size() < track_count:
+		track_mutes.append(false)
+	while track_mutes.size() > track_count:
+		track_mutes.remove_at(track_mutes.size() - 1)
+
+	while track_volumes.size() < track_count:
+		track_volumes.append(1.0)
+	while track_volumes.size() > track_count:
+		track_volumes.remove_at(track_volumes.size() - 1)
+
+	while track_colors.size() > track_count:
 		track_colors.remove_at(track_colors.size() - 1)
 
 func get_track_names() -> Array[String]:
 	return track_names.duplicate()
+
+func get_track_muted(track_index: int) -> bool:
+	if track_index < 0 or track_index >= track_mutes.size():
+		return false
+	return track_mutes[track_index]
+
+func get_track_volume(track_index: int) -> float:
+	if track_index < 0 or track_index >= track_volumes.size():
+		return 1.0
+	return track_volumes[track_index]
 
 func _emit_tracks_changed() -> void:
 	tracks_changed.emit(get_track_names())
@@ -577,6 +627,8 @@ func get_sequence_data() -> Dictionary:
 		"bpm": bpm,
 		"track_count": track_count,
 		"track_names": track_names.duplicate(),
+		"track_mutes": track_mutes.duplicate(),
+		"track_volumes": track_volumes.duplicate(),
 		"clips": serialized_clips
 	}
 
@@ -595,6 +647,17 @@ func load_sequence_data(data: Dictionary) -> void:
 		for track_name in loaded_track_names:
 			track_names.append(str(track_name))
 
+	track_mutes.clear()
+	var loaded_track_mutes = data.get("track_mutes", [])
+	if loaded_track_mutes is Array:
+		for muted in loaded_track_mutes:
+			track_mutes.append(bool(muted))
+
+	track_volumes.clear()
+	var loaded_track_volumes = data.get("track_volumes", [])
+	if loaded_track_volumes is Array:
+		for volume in loaded_track_volumes:
+			track_volumes.append(max(0.0, float(volume)))
 	_ensure_track_names_size()
 
 	fake_clips.clear()
@@ -2018,10 +2081,11 @@ func clear_selected_clip() -> void:
 	_emit_selected_clip_changed()
 	queue_redraw()
 
-#Track Editing
 func add_track() -> void:
 	track_count += 1
 	track_names.append(_create_default_track_name(track_count - 1))
+	track_mutes.append(false)
+	track_volumes.append(1.0)
 	_update_timeline_size()
 	_emit_sequence_changed()
 	_emit_tracks_changed()
@@ -2061,6 +2125,8 @@ func remove_track(track_index: int) -> void:
 			fake_clips[i] = clip
 
 	track_names.remove_at(track_index)
+	track_mutes.remove_at(track_index)
+	track_volumes.remove_at(track_index)
 	track_count -= 1
 
 	_reset_selection_and_interaction_state()
@@ -2093,6 +2159,14 @@ func move_track(from_index: int, to_index: int) -> void:
 	track_names.remove_at(from_index)
 	track_names.insert(to_index, moved_name)
 
+	var moved_mute := track_mutes[from_index]
+	track_mutes.remove_at(from_index)
+	track_mutes.insert(to_index, moved_mute)
+
+	var moved_volume := track_volumes[from_index]
+	track_volumes.remove_at(from_index)
+	track_volumes.insert(to_index, moved_volume)
+
 	for i in range(fake_clips.size()):
 		var clip := fake_clips[i]
 		if not clip.has("track"):
@@ -2109,6 +2183,53 @@ func move_track(from_index: int, to_index: int) -> void:
 
 		fake_clips[i] = clip
 
+	_emit_sequence_changed()
+	_emit_status_text()
+	_emit_selected_clip_changed()
+	_emit_tracks_changed()
+	queue_redraw()
+
+func duplicate_track(track_index: int) -> void:
+	if track_index < 0 or track_index >= track_count:
+		return
+
+	var source_name := track_names[track_index]
+	var duplicated_name := "%s Copy" % source_name
+	var duplicated_mute := false
+	var duplicated_volume := 1.0
+
+	if track_index < track_mutes.size():
+		duplicated_mute = track_mutes[track_index]
+	if track_index < track_volumes.size():
+		duplicated_volume = track_volumes[track_index]
+
+	var insert_index := track_index + 1
+
+	track_count += 1
+	track_names.insert(insert_index, duplicated_name)
+	track_mutes.insert(insert_index, duplicated_mute)
+	track_volumes.insert(insert_index, duplicated_volume)
+
+	var duplicated_clips: Array[Dictionary] = []
+
+	for i in range(fake_clips.size()):
+		var clip := fake_clips[i]
+		if not clip.has("track"):
+			continue
+
+		var clip_track := int(clip["track"])
+		if clip_track > track_index:
+			clip["track"] = clip_track + 1
+			fake_clips[i] = clip
+		elif clip_track == track_index:
+			var duplicated_clip := clip.duplicate(true)
+			duplicated_clip["track"] = insert_index
+			duplicated_clips.append(duplicated_clip)
+
+	for duplicated_clip in duplicated_clips:
+		fake_clips.append(duplicated_clip)
+
+	_update_timeline_size()
 	_emit_sequence_changed()
 	_emit_status_text()
 	_emit_selected_clip_changed()

@@ -13,7 +13,17 @@ extends VBoxContainer
 @onready var settings_host = $HSplitContainer/SettingsHost
 @onready var bars_slider = $HSplitContainer/SettingsHost/TimelineSettings/Bars/BarsSlider
 @onready var tracks_list = $HSplitContainer/SettingsHost/TimelineSettings/Tracks/ScrollContainer/TracksList
-@onready var track_add_button = $HSplitContainer/SettingsHost/TimelineSettings/Tracks/TrackHeader/TrackAddButton
+@onready var track_add_button = $HSplitContainer/SettingsHost/TimelineSettings/Tracks/TrackToolbar/TrackAddButton
+@onready var track_delete_button = $HSplitContainer/SettingsHost/TimelineSettings/Tracks/TrackToolbar/TrackDeleteButton
+@onready var track_duplicate_button = $HSplitContainer/SettingsHost/TimelineSettings/Tracks/TrackToolbar/TrackDuplicateButton
+@onready var track_move_down_button = $HSplitContainer/SettingsHost/TimelineSettings/Tracks/TrackToolbar/TrackMoveDownButton
+@onready var track_move_up_button = $HSplitContainer/SettingsHost/TimelineSettings/Tracks/TrackToolbar/TrackMoveUpButton
+@onready var tracks_scroll_container = $HSplitContainer/SettingsHost/TimelineSettings/Tracks/ScrollContainer
+@onready var track_header = $HSplitContainer/SettingsHost/TimelineSettings/Tracks/TrackHeader
+@onready var name_legend = $HSplitContainer/SettingsHost/TimelineSettings/Tracks/TrackHeader/NameLegend
+@onready var drag_legend_spacer = $HSplitContainer/SettingsHost/TimelineSettings/Tracks/TrackHeader/DragLegendSpacer
+@onready var mute_legend = $HSplitContainer/SettingsHost/TimelineSettings/Tracks/TrackHeader/MuteLegend
+@onready var volume_legend = $HSplitContainer/SettingsHost/TimelineSettings/Tracks/TrackHeader/VolumeLegend
 @onready var delete_clip_button = $ToolBar/ButtonDeleteClip
 @onready var new_sequence_dialog = $NewSequenceDialog
 @onready var new_bars_spin = $NewSequenceDialog/MarginContainer/VBoxContainer/NewBarsSpin
@@ -47,6 +57,22 @@ var pending_unsaved_action: String = ""
 var sequence_title: String = "Untitled Sequence"
 
 var pick_audio_no_audio_button: Button = null
+
+var selected_track_index: int = -1
+var dragged_track_index: int = -1
+var drag_track_target_index: int = -1
+var track_row_panels: Array[PanelContainer] = []
+var pending_drag_track_index: int = -1
+var is_dragging_track_row: bool = false
+var track_drag_start_global_position: Vector2 = Vector2.ZERO
+var drag_hover_track_index: int = -1
+var drag_insert_after: bool = false
+
+const TRACK_ROW_HEIGHT := 28
+const TRACK_ROW_SEPARATION := 3
+const TRACK_DRAG_STRIP_WIDTH := 16
+const TRACK_MUTE_WIDTH := 18
+const TRACK_VOLUME_WIDTH := 34
 
 func _ready() -> void:
 	if timeline == null:
@@ -112,6 +138,7 @@ func _ready() -> void:
 	pick_audio_dialog.filters = PackedStringArray(["*.wav, *.ogg, *.mp3 ; Audio Files"])
 	pick_audio_no_audio_button = pick_audio_dialog.add_button("No Audio", true, "NO_AUDIO")
 	_refresh_save_dialog_suggested_file()
+	_apply_track_header_layout()
 
 	_update_title_text()
 	
@@ -313,56 +340,223 @@ func _on_button_delete_clip_pressed() -> void:
 func _on_bars_slider_value_changed(value: float) -> void:
 	timeline.set_bars(int(value))
 
+class TrackActionsControl extends Control:
+	var track_index := -1
+	var on_up := Callable()
+	var on_down := Callable()
+	var on_delete := Callable()
+
+	func _ready():
+		mouse_filter = MOUSE_FILTER_STOP
+		custom_minimum_size = Vector2(30, 0)
+
+	func _gui_input(event):
+		if event is InputEventMouseButton and event.pressed:
+			var x = event.position.x
+			if x < 7:
+				on_up.call(track_index)
+			elif x < 14:
+				on_down.call(track_index)
+			else:
+				on_delete.call(track_index)
+
+	func _draw():
+		var font := get_theme_default_font()
+		var fs := get_theme_default_font_size() - 2
+		draw_string(font, Vector2(0, size.y * 0.7), "↑", HORIZONTAL_ALIGNMENT_LEFT, -1, fs)
+		draw_string(font, Vector2(10, size.y * 0.7), "↓", HORIZONTAL_ALIGNMENT_LEFT, -1, fs)
+		draw_string(font, Vector2(20, size.y * 0.7), "×", HORIZONTAL_ALIGNMENT_LEFT, -1, fs)
+
+func _get_track_row_index_at_global_position(global_position: Vector2) -> int:
+	for i in range(track_row_panels.size()):
+		var row_panel := track_row_panels[i]
+		if row_panel == null or not is_instance_valid(row_panel):
+			continue
+		if row_panel.get_global_rect().has_point(global_position):
+			return i
+	return -1
+
+func _resolve_final_track_drop_index(source_index: int) -> int:
+	if drag_hover_track_index < 0 or drag_hover_track_index >= timeline.track_count:
+		return -1
+
+	var target_index := drag_hover_track_index
+	if drag_insert_after:
+		target_index += 1
+
+	if target_index > source_index:
+		target_index -= 1
+
+	target_index = clamp(target_index, 0, timeline.track_count - 1)
+	return target_index
+
 func _refresh_tracks_list(track_names: Array) -> void:
 	for child in tracks_list.get_children():
 		child.queue_free()
 
-	for i in range(track_names.size()):
-		var row := HBoxContainer.new()
+	track_row_panels.clear()
 
-		var index_label := Label.new()
-		index_label.text = "%d" % [i + 1]
-		index_label.custom_minimum_size = Vector2(36, 0)
-		index_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-		index_label.size_flags_horizontal = Control.SIZE_SHRINK_END
+	for i in range(track_names.size()):
+		var row_panel := PanelContainer.new()
+		row_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row_panel.custom_minimum_size.y = TRACK_ROW_HEIGHT
+		row_panel.add_theme_stylebox_override("panel", _build_track_row_style(i == selected_track_index))
+
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", TRACK_ROW_SEPARATION)
+		row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row_panel.add_child(row)
+
 		var row_name_edit := LineEdit.new()
 		row_name_edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row_name_edit.custom_minimum_size = Vector2(52, 0)
 		row_name_edit.text = str(track_names[i])
 		row_name_edit.placeholder_text = "Track %d" % [i + 1]
 		row_name_edit.text_submitted.connect(_on_track_name_submitted.bind(i, row_name_edit))
 		row_name_edit.focus_exited.connect(_on_track_name_focus_exited.bind(i, row_name_edit))
+		row_name_edit.focus_entered.connect(_on_track_row_focus_entered.bind(i))
 
-		var up_button := Button.new()
-		up_button.text = "↑"
-		up_button.disabled = i == 0
-		up_button.pressed.connect(_on_track_move_up_pressed.bind(i))
+		var drag_strip := Control.new()
+		drag_strip.custom_minimum_size = Vector2(TRACK_DRAG_STRIP_WIDTH, 0)
+		drag_strip.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		drag_strip.mouse_filter = Control.MOUSE_FILTER_STOP
+		drag_strip.gui_input.connect(_on_track_drag_strip_gui_input.bind(i))
 
-		var down_button := Button.new()
-		down_button.text = "↓"
-		down_button.disabled = i == track_names.size() - 1
-		down_button.pressed.connect(_on_track_move_down_pressed.bind(i))
 
-		var delete_button := Button.new()
-		delete_button.text = "x"
-		delete_button.disabled = track_names.size() <= 1
-		delete_button.pressed.connect(_on_track_delete_pressed.bind(i))
+		var mute_check_box := CheckBox.new()
+		mute_check_box.custom_minimum_size = Vector2(TRACK_MUTE_WIDTH, 0)
+		mute_check_box.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		mute_check_box.button_pressed = timeline.get_track_muted(i)
+		mute_check_box.focus_entered.connect(_on_track_row_focus_entered.bind(i))
+		mute_check_box.toggled.connect(_on_track_mute_toggled.bind(i))
 
-		row.add_child(index_label)
+		var volume_edit := LineEdit.new()
+		volume_edit.custom_minimum_size = Vector2(TRACK_VOLUME_WIDTH, 0)
+		volume_edit.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+		volume_edit.alignment = HORIZONTAL_ALIGNMENT_CENTER
+		volume_edit.text = _format_track_volume_value(timeline.get_track_volume(i))
+		volume_edit.focus_entered.connect(_on_track_row_focus_entered.bind(i))
+		volume_edit.text_submitted.connect(_on_track_volume_edit_text_submitted.bind(i, volume_edit))
+		volume_edit.focus_exited.connect(_on_track_volume_edit_focus_exited.bind(i, volume_edit))
+
+
 		row.add_child(row_name_edit)
-		row.add_child(up_button)
-		row.add_child(down_button)
-		row.add_child(delete_button)
+		row.add_child(drag_strip)
+		row.add_child(mute_check_box)
+		row.add_child(volume_edit)
 
-		tracks_list.add_child(row)
+		tracks_list.add_child(row_panel)
+		track_row_panels.append(row_panel)
+
+	_refresh_track_toolbar_buttons()
+	_refresh_tracks_list_height()
+
+
+func _refresh_tracks_list_height() -> void:
+	var visible_rows := min(max(timeline.track_count, 1), 6)
+	var row_height := 30
+	var row_spacing := 4
+	var target_height = (visible_rows * row_height) + (max(0, visible_rows - 1) * row_spacing)
+
+	tracks_scroll_container.custom_minimum_size.y = target_height
+	tracks_list.custom_minimum_size.y = 0
+
+func _refresh_track_toolbar_buttons() -> void:
+	var has_selection = selected_track_index >= 0 and selected_track_index < timeline.track_count
+	track_delete_button.disabled = not has_selection or timeline.track_count <= 1
+	track_duplicate_button.disabled = not has_selection
+	track_move_up_button.disabled = not has_selection or selected_track_index <= 0
+	track_move_down_button.disabled = not has_selection or selected_track_index >= timeline.track_count - 1
+
+func _apply_track_header_layout() -> void:
+	track_header.add_theme_constant_override("separation", TRACK_ROW_SEPARATION)
+
+	name_legend.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	name_legend.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+
+	drag_legend_spacer.custom_minimum_size = Vector2(TRACK_DRAG_STRIP_WIDTH, 0)
+	drag_legend_spacer.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+
+	mute_legend.custom_minimum_size = Vector2(TRACK_MUTE_WIDTH, 0)
+	mute_legend.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	mute_legend.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+
+	volume_legend.custom_minimum_size = Vector2(TRACK_VOLUME_WIDTH, 0)
+	volume_legend.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	volume_legend.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+
+func _set_selected_track_index(value: int) -> void:
+	if value < 0 or value >= timeline.track_count:
+		selected_track_index = -1
+	else:
+		selected_track_index = value
+	_refresh_track_row_selection_styles()
+	_refresh_track_toolbar_buttons()
+
+func _build_track_row_style(selected: bool, drag_target: bool = false, insert_after: bool = false) -> StyleBoxFlat:
+	var style := StyleBoxFlat.new()
+	style.corner_radius_top_left = 3
+	style.corner_radius_top_right = 3
+	style.corner_radius_bottom_right = 3
+	style.corner_radius_bottom_left = 3
+
+	if selected:
+		style.bg_color = Color(0.24, 0.28, 0.36)
+	else:
+		style.bg_color = Color(0.0, 0.0, 0.0, 0.0)
+
+	if drag_target:
+		style.border_color = Color(0.82, 0.88, 1.0)
+		if insert_after:
+			style.border_width_bottom = 2
+		else:
+			style.border_width_top = 2
+
+	return style
+
+
+func _refresh_track_row_selection_styles() -> void:
+	for i in range(track_row_panels.size()):
+		var row_panel := track_row_panels[i]
+		if row_panel == null or not is_instance_valid(row_panel):
+			continue
+
+		var is_selected := i == selected_track_index
+		var is_drag_target := is_dragging_track_row and i == drag_hover_track_index
+
+		row_panel.add_theme_stylebox_override(
+			"panel",
+			_build_track_row_style(is_selected, is_drag_target, drag_insert_after)
+		)
+
 
 func _on_timeline_control_tracks_changed(track_names: Array) -> void:
 	track_spin.max_value = max(0, timeline.track_count - 1)
+
+	if selected_track_index >= timeline.track_count:
+		selected_track_index = timeline.track_count - 1
+	if timeline.track_count <= 0:
+		selected_track_index = -1
+
 	for child in tracks_list.get_children():
-		for sub in child.get_children():
-			if sub is LineEdit and sub.has_focus():
-				return
+		if _node_or_descendant_has_focused_line_edit(child):
+			_refresh_track_toolbar_buttons()
+			_refresh_tracks_list_height()
+			_refresh_track_row_selection_styles()
+			return
 
 	_refresh_tracks_list(track_names)
+	_refresh_track_toolbar_buttons()
+
+func _node_or_descendant_has_focused_line_edit(node: Node) -> bool:
+	if node is LineEdit and (node as LineEdit).has_focus():
+		return true
+
+	for child in node.get_children():
+		if _node_or_descendant_has_focused_line_edit(child):
+			return true
+
+	return false
 
 func _on_track_add_button_pressed() -> void:
 	timeline.add_track()
@@ -377,13 +571,57 @@ func _on_track_move_up_pressed(track_index: int) -> void:
 func _on_track_move_down_pressed(track_index: int) -> void:
 	timeline.move_track(track_index, track_index + 1)
 
+func _on_track_mute_toggled(toggled_on: bool, track_index: int) -> void:
+	timeline.set_track_muted(track_index, toggled_on)
+
+func _on_track_volume_value_changed(value: float, track_index: int) -> void:
+	timeline.set_track_volume(track_index, value)
+
 func _on_track_name_submitted(_text: String, track_index: int, line_edit: LineEdit) -> void:
 	timeline.rename_track(track_index, line_edit.text)
 	line_edit.release_focus()
 
 func _on_track_name_focus_exited(track_index: int, line_edit: LineEdit) -> void:
+	call_deferred("_commit_track_name_after_focus_change", track_index, line_edit)
+
+func _format_track_volume_value(value: float) -> String:
+	var text := "%.2f" % value
+	return text
+
+func _parse_track_volume_value(text: String) -> float:
+	var parsed = text.strip_edges().replace(",", ".")
+	if parsed.is_empty():
+		return 1.0
+
+	if not parsed.is_valid_float():
+		return 1.0
+
+	return clamp(float(parsed), 0.0, 3.0)
+
+
+func _on_track_volume_edit_text_submitted(_text: String, track_index: int, line_edit: LineEdit) -> void:
+	var value := _parse_track_volume_value(line_edit.text)
+	timeline.set_track_volume(track_index, value)
+	line_edit.text = _format_track_volume_value(value)
+	line_edit.release_focus()
+
+
+func _on_track_volume_edit_focus_exited(track_index: int, line_edit: LineEdit) -> void:
+	call_deferred("_commit_track_volume_after_focus_change", track_index, line_edit)
+
+
+func _commit_track_volume_after_focus_change(track_index: int, line_edit: LineEdit) -> void:
+	if line_edit == null or not is_instance_valid(line_edit):
+		return
+
+	var value := _parse_track_volume_value(line_edit.text)
+	timeline.set_track_volume(track_index, value)
+	line_edit.text = _format_track_volume_value(value)
+
+func _commit_track_name_after_focus_change(track_index: int, line_edit: LineEdit) -> void:
+	if line_edit == null or not is_instance_valid(line_edit):
+		return
 	timeline.rename_track(track_index, line_edit.text)
-	_refresh_tracks_list(timeline.get_track_names())
 
 func _on_button_new_pressed() -> void:
 	if has_unsaved_changes:
@@ -596,3 +834,133 @@ func _on_clip_playback_speed_spin_value_changed(value: float) -> void:
 	if _updating_clip_settings_ui:
 		return
 	timeline.set_selected_clip_playback_speed(value)
+
+
+func _on_track_delete_button_pressed() -> void:
+	if selected_track_index < 0:
+		return
+	_on_track_delete_pressed(selected_track_index)
+
+
+func _on_track_duplicate_button_pressed() -> void:
+	if selected_track_index < 0:
+		return
+	timeline.duplicate_track(selected_track_index)
+	_set_selected_track_index(min(selected_track_index + 1, timeline.track_count - 1))
+
+
+func _on_track_move_up_button_pressed() -> void:
+	if selected_track_index < 1:
+		return
+	timeline.move_track(selected_track_index, selected_track_index - 1)
+	_set_selected_track_index(selected_track_index - 1)
+
+
+func _on_track_move_down_button_pressed() -> void:
+	if selected_track_index < 0 or selected_track_index >= timeline.track_count - 1:
+		return
+	timeline.move_track(selected_track_index, selected_track_index + 1)
+	_set_selected_track_index(selected_track_index + 1)
+
+func _on_track_row_focus_entered(track_index: int) -> void:
+	_set_selected_track_index(track_index)
+
+
+func _on_track_row_control_pressed(track_index: int) -> void:
+	_set_selected_track_index(track_index)
+
+func _on_track_drag_strip_gui_input(event: InputEvent, track_index: int) -> void:
+	if event is InputEventMouseButton:
+		var mouse_button_event := event as InputEventMouseButton
+
+		if mouse_button_event.button_index != MOUSE_BUTTON_LEFT:
+			return
+
+		if mouse_button_event.pressed:
+			_set_selected_track_index(track_index)
+			pending_drag_track_index = track_index
+			dragged_track_index = -1
+			drag_hover_track_index = -1
+			drag_insert_after = false
+			is_dragging_track_row = false
+			track_drag_start_global_position = mouse_button_event.global_position
+			return
+
+		if not is_dragging_track_row:
+			pending_drag_track_index = -1
+			dragged_track_index = -1
+			drag_hover_track_index = -1
+			drag_insert_after = false
+			_refresh_track_row_selection_styles()
+			return
+
+		var source_index := dragged_track_index
+		var final_target_index := _resolve_final_track_drop_index(source_index)
+
+		pending_drag_track_index = -1
+		dragged_track_index = -1
+		drag_hover_track_index = -1
+		drag_insert_after = false
+		is_dragging_track_row = false
+
+		if final_target_index != -1 and final_target_index != source_index:
+			timeline.move_track(source_index, final_target_index)
+			selected_track_index = final_target_index
+
+		_refresh_track_row_selection_styles()
+		_refresh_track_toolbar_buttons()
+		return
+
+	if event is InputEventMouseMotion:
+		var mouse_motion_event := event as InputEventMouseMotion
+
+		if pending_drag_track_index == -1:
+			return
+		if (mouse_motion_event.button_mask & MOUSE_BUTTON_MASK_LEFT) == 0:
+			return
+
+		if not is_dragging_track_row:
+			if mouse_motion_event.global_position.distance_to(track_drag_start_global_position) < 6.0:
+				return
+
+			is_dragging_track_row = true
+			dragged_track_index = pending_drag_track_index
+			drag_hover_track_index = pending_drag_track_index
+			drag_insert_after = false
+
+		var hovered_index := _get_track_row_index_at_global_position(mouse_motion_event.global_position)
+		if hovered_index == -1:
+			return
+
+		var hovered_panel := track_row_panels[hovered_index]
+		if hovered_panel == null or not is_instance_valid(hovered_panel):
+			return
+
+		var rect := hovered_panel.get_global_rect()
+		var insert_after := mouse_motion_event.global_position.y >= (rect.position.y + rect.size.y * 0.5)
+
+		if drag_hover_track_index != hovered_index or drag_insert_after != insert_after:
+			drag_hover_track_index = hovered_index
+			drag_insert_after = insert_after
+			_refresh_track_row_selection_styles()
+
+	if event is InputEventMouseMotion:
+		var mouse_motion_event := event as InputEventMouseMotion
+
+		if pending_drag_track_index == -1:
+			return
+		if (mouse_motion_event.button_mask & MOUSE_BUTTON_MASK_LEFT) == 0:
+			return
+
+		if not is_dragging_track_row:
+			if mouse_motion_event.global_position.distance_to(track_drag_start_global_position) < 6.0:
+				return
+
+			is_dragging_track_row = true
+			dragged_track_index = pending_drag_track_index
+			drag_track_target_index = pending_drag_track_index
+
+		var hovered_index := _get_track_row_index_at_global_position(mouse_motion_event.global_position)
+		if hovered_index != -1 and hovered_index != drag_track_target_index:
+			drag_track_target_index = hovered_index
+			_refresh_track_row_selection_styles()

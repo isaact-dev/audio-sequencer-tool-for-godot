@@ -87,14 +87,13 @@ split_offsets = PackedInt32Array(240)
 split_offset = 240
 
 [node name="SettingsHost" type="ScrollContainer" parent="HSplitContainer" unique_id=604947903]
-custom_minimum_size = Vector2(180, 0)
 layout_mode = 2
 horizontal_scroll_mode = 0
 vertical_scroll_mode = 2
 
 [node name="ClipSettings" type="VBoxContainer" parent="HSplitContainer/SettingsHost" unique_id=931133608]
 visible = false
-custom_minimum_size = Vector2(217, 0)
+custom_minimum_size = Vector2(209, 0)
 layout_mode = 2
 size_flags_horizontal = 3
 
@@ -177,7 +176,6 @@ step = 0.1
 value = 0.9
 
 [node name="TimelineSettings" type="VBoxContainer" parent="HSplitContainer/SettingsHost" unique_id=1041869853]
-custom_minimum_size = Vector2(180, 0)
 layout_mode = 2
 size_flags_horizontal = 3
 
@@ -225,25 +223,34 @@ size_flags_vertical = 3
 
 [node name="TrackHeader" type="HBoxContainer" parent="HSplitContainer/SettingsHost/TimelineSettings/Tracks" unique_id=784488565]
 layout_mode = 2
+theme_override_constants/separation = 3
 
-[node name="TracksLabel" type="Label" parent="HSplitContainer/SettingsHost/TimelineSettings/Tracks/TrackHeader" unique_id=1993894823]
-layout_mode = 2
-size_flags_vertical = 0
-text = "Tracks"
-
-[node name="Control" type="Control" parent="HSplitContainer/SettingsHost/TimelineSettings/Tracks/TrackHeader" unique_id=1952741530]
+[node name="NameLegend" type="Label" parent="HSplitContainer/SettingsHost/TimelineSettings/Tracks/TrackHeader" unique_id=726435067]
 layout_mode = 2
 size_flags_horizontal = 3
-size_flags_vertical = 0
+text = "Name"
 
-[node name="TrackAddButton" type="Button" parent="HSplitContainer/SettingsHost/TimelineSettings/Tracks/TrackHeader" unique_id=113314942]
+[node name="DragLegendSpacer" type="Control" parent="HSplitContainer/SettingsHost/TimelineSettings/Tracks/TrackHeader" unique_id=1647593533]
+custom_minimum_size = Vector2(16, 0)
 layout_mode = 2
-size_flags_horizontal = 8
-size_flags_vertical = 0
-text = "+"
+size_flags_horizontal = 4
+
+[node name="MuteLegend" type="Label" parent="HSplitContainer/SettingsHost/TimelineSettings/Tracks/TrackHeader" unique_id=495000737]
+custom_minimum_size = Vector2(18, 0)
+layout_mode = 2
+size_flags_horizontal = 4
+text = "Mute"
+horizontal_alignment = 1
+
+[node name="VolumeLegend" type="Label" parent="HSplitContainer/SettingsHost/TimelineSettings/Tracks/TrackHeader" unique_id=261898880]
+custom_minimum_size = Vector2(34, 0)
+layout_mode = 2
+size_flags_horizontal = 4
+text = "Volume    "
+horizontal_alignment = 1
 
 [node name="ScrollContainer" type="ScrollContainer" parent="HSplitContainer/SettingsHost/TimelineSettings/Tracks" unique_id=662564042]
-custom_minimum_size = Vector2(0, 300)
+custom_minimum_size = Vector2(0, 200)
 layout_mode = 2
 size_flags_vertical = 3
 horizontal_scroll_mode = 0
@@ -253,6 +260,33 @@ vertical_scroll_mode = 2
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
+
+[node name="TrackToolbar" type="HBoxContainer" parent="HSplitContainer/SettingsHost/TimelineSettings/Tracks" unique_id=1694568536]
+layout_mode = 2
+
+[node name="TrackAddButton" type="Button" parent="HSplitContainer/SettingsHost/TimelineSettings/Tracks/TrackToolbar" unique_id=1493214333]
+layout_mode = 2
+text = "+"
+
+[node name="TrackDeleteButton" type="Button" parent="HSplitContainer/SettingsHost/TimelineSettings/Tracks/TrackToolbar" unique_id=2112435769]
+layout_mode = 2
+disabled = true
+text = "x"
+
+[node name="TrackDuplicateButton" type="Button" parent="HSplitContainer/SettingsHost/TimelineSettings/Tracks/TrackToolbar" unique_id=954574791]
+layout_mode = 2
+disabled = true
+text = "Duplicate"
+
+[node name="TrackMoveDownButton" type="Button" parent="HSplitContainer/SettingsHost/TimelineSettings/Tracks/TrackToolbar" unique_id=992664712]
+layout_mode = 2
+disabled = true
+text = "↓"
+
+[node name="TrackMoveUpButton" type="Button" parent="HSplitContainer/SettingsHost/TimelineSettings/Tracks/TrackToolbar" unique_id=2021184000]
+layout_mode = 2
+disabled = true
+text = "↑"
 
 [node name="TimelineBox" type="VBoxContainer" parent="HSplitContainer" unique_id=1336411594]
 custom_minimum_size = Vector2(0, 80)
@@ -380,7 +414,11 @@ filters = PackedStringArray("*.wav, *.ogg, *.mp3 ; Audio Files")
 [connection signal="text_submitted" from="HSplitContainer/SettingsHost/TimelineSettings/TitleEdit" to="." method="_on_title_edit_text_submitted"]
 [connection signal="value_changed" from="HSplitContainer/SettingsHost/TimelineSettings/BPM/BPMSlider" to="." method="_on_bpm_slider_value_changed"]
 [connection signal="value_changed" from="HSplitContainer/SettingsHost/TimelineSettings/Bars/BarsSlider" to="." method="_on_bars_slider_value_changed"]
-[connection signal="pressed" from="HSplitContainer/SettingsHost/TimelineSettings/Tracks/TrackHeader/TrackAddButton" to="." method="_on_track_add_button_pressed"]
+[connection signal="pressed" from="HSplitContainer/SettingsHost/TimelineSettings/Tracks/TrackToolbar/TrackAddButton" to="." method="_on_track_add_button_pressed"]
+[connection signal="pressed" from="HSplitContainer/SettingsHost/TimelineSettings/Tracks/TrackToolbar/TrackDeleteButton" to="." method="_on_track_delete_button_pressed"]
+[connection signal="pressed" from="HSplitContainer/SettingsHost/TimelineSettings/Tracks/TrackToolbar/TrackDuplicateButton" to="." method="_on_track_duplicate_button_pressed"]
+[connection signal="pressed" from="HSplitContainer/SettingsHost/TimelineSettings/Tracks/TrackToolbar/TrackMoveDownButton" to="." method="_on_track_move_down_button_pressed"]
+[connection signal="pressed" from="HSplitContainer/SettingsHost/TimelineSettings/Tracks/TrackToolbar/TrackMoveUpButton" to="." method="_on_track_move_up_button_pressed"]
 [connection signal="mouse_exited" from="HSplitContainer/TimelineBox/TimelinePanel" to="HSplitContainer/TimelineBox/TimelinePanel/ScrollContainer/TimelineControl" method="_on_timeline_panel_mouse_exited"]
 [connection signal="add_clip_requested" from="HSplitContainer/TimelineBox/TimelinePanel/ScrollContainer/TimelineControl" to="." method="_on_timeline_control_add_clip_requested"]
 [connection signal="selected_clip_changed" from="HSplitContainer/TimelineBox/TimelinePanel/ScrollContainer/TimelineControl" to="." method="_on_timeline_control_selected_clip_changed"]

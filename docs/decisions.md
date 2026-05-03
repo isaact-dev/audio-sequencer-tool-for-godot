@@ -297,4 +297,15 @@ This is an important plus of working with a plugin like this as it can't easily 
 ## 2026-04-26 — Preserve insertion intent before the audio picker opens
 
 ### Decision
+
 Preserve insertion intent before the audio picker opens, but only resolve the clip’s final placement after the chosen audio file reveals the real clip length to avoid overlap.
+
+## 2026-04-29 — Track list interaction and layout redesign
+
+### Decision
+
+The track list UI is redesigned around a selectable, draggable row model with a bottom track toolbar.
+
+### Reasoning
+
+The previous track list layout became too dense and hard to use once track-level controls were added directly into each row. Per-row move/delete controls took up too much horizontal space and the row layout scaled poorly in a narrow dock.
