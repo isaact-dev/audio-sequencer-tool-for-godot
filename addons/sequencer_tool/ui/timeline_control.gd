@@ -615,7 +615,8 @@ func get_sequence_data() -> Dictionary:
 			"length": float(clip.get("length", min_clip_length)),
 			"name": str(clip.get("name", "Clip")),
 			"audio_path": str(clip.get("audio_path", "")),
-			"playback_speed": float(clip.get("playback_speed", 1.0))
+			"playback_speed": float(clip.get("playback_speed", 1.0)),
+			"volume": float(clip.get("volume", 1.0))
 		}
 
 		serialized_clips.append(serialized_clip)
@@ -672,6 +673,7 @@ func load_sequence_data(data: Dictionary) -> void:
 			var clip_start := max(0.0, float(loaded_clip.get("start", 0.0)))
 			var clip_length := max(min_clip_length, float(loaded_clip.get("length", min_clip_length)))
 			var clip_playback_speed := max(0.001, float(loaded_clip.get("playback_speed", 1.0)))
+			var clip_volume := max(0.0, float(loaded_clip.get("volume", 1.0)))
 
 			var clip: Dictionary = {
 				"track": clip_track,
@@ -679,7 +681,8 @@ func load_sequence_data(data: Dictionary) -> void:
 				"length": clip_length,
 				"name": str(loaded_clip.get("name", "Clip")),
 				"audio_path": str(loaded_clip.get("audio_path", "")),
-				"playback_speed": clip_playback_speed
+				"playback_speed": clip_playback_speed,
+				"volume": clip_volume
 			}
 			var max_length := min(max(min_clip_length, float(_get_total_subdivisions()) - clip_start),_get_clip_max_length_from_audio(clip))
 			clip["length"] = clamp(clip_length, min_clip_length, max_length)
@@ -1223,7 +1226,8 @@ func add_clip(audio_path: String = "") -> void:
 		"length": default_length,
 		"name": clip_name,
 		"audio_path": audio_path,
-		"playback_speed": 1.0
+		"playback_speed": 1.0,
+		"volume": 1.0
 	}
 
 	fake_clips.append(new_clip)
@@ -1767,6 +1771,14 @@ func set_selected_clip_playback_speed(value: float) -> void:
 	)
 
 	_commit_selected_clip_change("Set Clip Playback Speed", clip)
+
+func set_selected_clip_volume(value: float) -> void:
+	if selected_clip_index < 0 or selected_clip_index >= fake_clips.size():
+		return
+
+	var clip := fake_clips[selected_clip_index].duplicate(true)
+	clip["volume"] = max(0.0, value)
+	_commit_selected_clip_change("Set Clip Volume", clip)
 
 func _commit_selected_clip_change(action_name: String, updated_clip: Dictionary) -> void:
 	if selected_clip_index < 0 or selected_clip_index >= fake_clips.size():

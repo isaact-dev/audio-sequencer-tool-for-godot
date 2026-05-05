@@ -149,6 +149,17 @@ max_value = 8.0
 step = 0.05
 value = 1.0
 
+[node name="ClipVolumeLabel" type="Label" parent="HSplitContainer/SettingsHost/ClipSettings" unique_id=761708702]
+layout_mode = 2
+text = "Volume
+"
+
+[node name="ClipVolumeSpin" type="SpinBox" parent="HSplitContainer/SettingsHost/ClipSettings" unique_id=551096608]
+layout_mode = 2
+max_value = 3.0
+step = 0.05
+value = 1.0
+
 [node name="ClipTrackLabel" type="Label" parent="HSplitContainer/SettingsHost/ClipSettings" unique_id=1277571663]
 layout_mode = 2
 text = "Track"
@@ -407,6 +418,7 @@ filters = PackedStringArray("*.wav, *.ogg, *.mp3 ; Audio Files")
 [connection signal="text_submitted" from="HSplitContainer/SettingsHost/ClipSettings/ClipSourceRow/ClipSourceEdit" to="." method="_on_clip_source_edit_text_submitted"]
 [connection signal="pressed" from="HSplitContainer/SettingsHost/ClipSettings/ClipSourceRow/ClipSourcePickButton" to="." method="_on_clip_source_pick_button_pressed"]
 [connection signal="value_changed" from="HSplitContainer/SettingsHost/ClipSettings/ClipPlaybackSpeedSpin" to="." method="_on_clip_playback_speed_spin_value_changed"]
+[connection signal="value_changed" from="HSplitContainer/SettingsHost/ClipSettings/ClipVolumeSpin" to="." method="_on_clip_volume_spin_value_changed"]
 [connection signal="value_changed" from="HSplitContainer/SettingsHost/ClipSettings/ClipTrackSpin" to="." method="_on_clip_track_spin_value_changed"]
 [connection signal="value_changed" from="HSplitContainer/SettingsHost/ClipSettings/ClipStartSpin" to="." method="_on_clip_start_spin_value_changed"]
 [connection signal="value_changed" from="HSplitContainer/SettingsHost/ClipSettings/ClipLengthSpin" to="." method="_on_clip_length_spin_value_changed"]

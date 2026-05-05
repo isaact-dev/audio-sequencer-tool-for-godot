@@ -10,6 +10,7 @@ extends VBoxContainer
 @onready var clip_settings: VBoxContainer = $HSplitContainer/SettingsHost/ClipSettings
 @onready var start_spin = $HSplitContainer/SettingsHost/ClipSettings/ClipStartSpin
 @onready var length_spin = $HSplitContainer/SettingsHost/ClipSettings/ClipLengthSpin
+@onready var volume_spin = $HSplitContainer/SettingsHost/ClipSettings/ClipVolumeSpin
 @onready var settings_host = $HSplitContainer/SettingsHost
 @onready var bars_slider = $HSplitContainer/SettingsHost/TimelineSettings/Bars/BarsSlider
 @onready var tracks_list = $HSplitContainer/SettingsHost/TimelineSettings/Tracks/ScrollContainer/TracksList
@@ -155,6 +156,7 @@ func _clear_clip_settings_ui() -> void:
 	track_spin.value = track_spin.min_value
 	start_spin.value = start_spin.min_value
 	length_spin.value = length_spin.min_value
+	volume_spin.value = 1.0
 	playback_speed_spin.value = 1.0
 	delete_clip_button.disabled = true
 	_updating_clip_settings_ui = false
@@ -171,6 +173,7 @@ func _sync_clip_settings_ui(clip_index: int, clip_data: Dictionary) -> void:
 		start_spin.value = start_spin.min_value
 		length_spin.value = length_spin.min_value
 		playback_speed_spin.value = 1.0
+		volume_spin.value = 1.0
 	else:
 		delete_clip_button.disabled = false
 		var clip_length := float(clip_data.get("length", timeline.min_clip_length))
@@ -178,6 +181,7 @@ func _sync_clip_settings_ui(clip_index: int, clip_data: Dictionary) -> void:
 		var clip_start := float(clip_data.get("start", 0.0))
 		var max_length = timeline.get_clip_max_length(clip_index)
 		var clip_playback_speed := float(clip_data.get("playback_speed", 1.0))
+		var clip_volume := float(clip_data.get("volume", 1.0))
 		var clip_name := str(clip_data.get("name", ""))
 		var clip_audio_path := str(clip_data.get("audio_path", ""))
 
@@ -201,7 +205,8 @@ func _sync_clip_settings_ui(clip_index: int, clip_data: Dictionary) -> void:
 			length_spin.value = clip_length
 		if playback_speed_spin.value != clip_playback_speed:
 					playback_speed_spin.value = clip_playback_speed
-
+		if volume_spin.value != clip_volume:
+			volume_spin.value = clip_volume
 	_updating_clip_settings_ui = false
 
 func _sync_timeline_settings_ui() -> void:
@@ -964,3 +969,9 @@ func _on_track_drag_strip_gui_input(event: InputEvent, track_index: int) -> void
 		if hovered_index != -1 and hovered_index != drag_track_target_index:
 			drag_track_target_index = hovered_index
 			_refresh_track_row_selection_styles()
+
+
+func _on_clip_volume_spin_value_changed(value: float) -> void:
+	if _updating_clip_settings_ui:
+		return
+	timeline.set_selected_clip_volume(value)
