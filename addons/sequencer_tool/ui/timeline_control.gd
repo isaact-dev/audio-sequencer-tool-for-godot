@@ -411,6 +411,51 @@ func _can_place_clip_at(track_index: int, exclude_clip_index: int, clip_length: 
 
 	return is_equal_approx(resolved_start, start_position)
 
+func _is_supported_audio_path(path: String) -> bool:
+	var extension := path.get_extension().to_lower()
+	return extension == "wav" or extension == "ogg" or extension == "mp3"
+
+func _extract_audio_paths_from_drop_data(data: Variant) -> Array[String]:
+	var audio_paths: Array[String] = []
+
+	if data is Dictionary:
+		var data_dictionary := data as Dictionary
+
+		if str(data_dictionary.get("type", "")) == "files":
+			var files := data_dictionary.get("files", [])
+			if files is PackedStringArray:
+				for file_path in files:
+					var resolved_path := str(file_path)
+					if _is_supported_audio_path(resolved_path):
+						audio_paths.append(resolved_path)
+			elif files is Array:
+				for file_path in files:
+					var resolved_path := str(file_path)
+					if _is_supported_audio_path(resolved_path):
+						audio_paths.append(resolved_path)
+
+		elif data_dictionary.has("files"):
+			var dictionary_files := data_dictionary.get("files", [])
+			if dictionary_files is Array:
+				for file_path in dictionary_files:
+					var resolved_path := str(file_path)
+					if _is_supported_audio_path(resolved_path):
+						audio_paths.append(resolved_path)
+
+	elif data is PackedStringArray:
+		for file_path in data:
+			var resolved_path := str(file_path)
+			if _is_supported_audio_path(resolved_path):
+				audio_paths.append(resolved_path)
+
+	elif data is Array:
+		for file_path in data:
+			var resolved_path := str(file_path)
+			if _is_supported_audio_path(resolved_path):
+				audio_paths.append(resolved_path)
+
+	return audio_paths
+
 func _build_status_text() -> String:
 	var snap_text := "On" if _is_snap_active() else "Off"
 	var base_text := ""
@@ -716,6 +761,43 @@ func _is_mouse_over_timeline_lanes(position: Vector2) -> bool:
 		and position.y >= header_height
 		and position.y <= size.y
 	)
+
+func _can_drop_data(at_position: Vector2, data: Variant) -> bool:
+	if _is_editing_blocked_by_playback():
+		return false
+	if not _is_mouse_over_timeline_lanes(at_position):
+		return false
+	return not _extract_audio_paths_from_drop_data(data).is_empty()
+
+func _drop_data(at_position: Vector2, data: Variant) -> void:
+	var audio_paths := _extract_audio_paths_from_drop_data(data)
+	if audio_paths.is_empty():
+		return
+
+	var target_track := _y_to_track_index(at_position.y)
+	var next_start := _snap_timeline_position(_x_to_timeline(at_position.x))
+	var inserted_indices: Array[int] = []
+
+	for audio_path in audio_paths:
+		var inserted_index := add_clip_at_position(audio_path, target_track, next_start)
+		if inserted_index < 0:
+			continue
+
+		inserted_indices.append(inserted_index)
+
+		var inserted_clip := fake_clips[inserted_index]
+		next_start = _snap_timeline_position(float(inserted_clip["start"]) + float(inserted_clip["length"]))
+
+	if inserted_indices.is_empty():
+		_show_blocked_action_feedback("No room to add dropped audio on this track.")
+		return
+
+	_set_selected_clip_indices(inserted_indices)
+	_ensure_clip_visible(inserted_indices.back())
+	_emit_sequence_changed()
+	_emit_status_text()
+	_emit_selected_clip_changed()
+	queue_redraw()
 
 func _gui_input(event: InputEvent) -> void:
 	_update_temporary_snap_override_from_event(event)
@@ -1164,12 +1246,9 @@ func _end_clip_drag() -> void:
 func _is_snap_active() -> bool:
 	return snap_enabled != temporary_snap_override_active
 
-func add_clip(audio_path: String = "") -> void:
-	if _is_editing_blocked_by_playback():
-		return
-
-	var default_length := max(4.0, min_clip_length)
+func _build_new_clip_defaults(audio_path: String) -> Dictionary:
 	var clip_name := "New Clip"
+	var clip_length := max(4.0, min_clip_length)
 
 	if not audio_path.strip_edges().is_empty():
 		clip_name = audio_path.get_file().get_basename()
@@ -1178,10 +1257,55 @@ func add_clip(audio_path: String = "") -> void:
 		if audio_stream != null:
 			var audio_length_seconds := audio_stream.get_length()
 			if audio_length_seconds > 0.0:
-				default_length = max(audio_length_seconds * _get_subdivisions_per_second(), min_clip_length)
+				clip_length = max(audio_length_seconds * _get_subdivisions_per_second(), min_clip_length)
 
 	if clip_name.strip_edges().is_empty():
 		clip_name = "New Clip"
+
+	return {
+		"name": clip_name,
+		"length": clip_length
+	}
+
+func add_clip_at_position(audio_path: String, track_index: int, desired_start: float) -> int:
+	if _is_editing_blocked_by_playback():
+		return -1
+
+	var defaults := _build_new_clip_defaults(audio_path)
+	var clip_length := min(float(defaults["length"]), float(_get_total_subdivisions()))
+	var clip_name := str(defaults["name"])
+
+	if clip_length <= 0.0:
+		return -1
+
+	var resolved_track := clamp(track_index, 0, track_count - 1)
+	var resolved_start := _snap_timeline_position(desired_start)
+
+	if not _can_place_clip_at(resolved_track, -1, clip_length, resolved_start):
+		resolved_start = _find_available_start(resolved_track, clip_length, resolved_start)
+		if resolved_start < 0.0:
+			return -1
+
+	var new_clip := {
+		"track": resolved_track,
+		"start": resolved_start,
+		"length": clip_length,
+		"name": clip_name,
+		"audio_path": audio_path,
+		"playback_speed": 1.0,
+		"volume": 1.0
+	}
+
+	fake_clips.append(new_clip)
+	return fake_clips.size() - 1
+
+func add_clip(audio_path: String = "") -> void:
+	if _is_editing_blocked_by_playback():
+		return
+
+	var defaults := _build_new_clip_defaults(audio_path)
+	var default_length := float(defaults["length"])
+	var clip_name := str(defaults["name"])
 
 	var total_subdivisions := float(_get_total_subdivisions())
 
@@ -1217,8 +1341,6 @@ func add_clip(audio_path: String = "") -> void:
 	if new_start < 0.0:
 		_show_blocked_action_feedback("No room to add a clip on this track.")
 		return
-
-
 
 	var new_clip := {
 		"track": new_track,
