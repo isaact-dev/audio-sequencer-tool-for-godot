@@ -344,33 +344,6 @@ func _on_button_delete_clip_pressed() -> void:
 func _on_bars_slider_value_changed(value: float) -> void:
 	timeline.set_bars(int(value))
 
-class TrackActionsControl extends Control:
-	var track_index := -1
-	var on_up := Callable()
-	var on_down := Callable()
-	var on_delete := Callable()
-
-	func _ready():
-		mouse_filter = MOUSE_FILTER_STOP
-		custom_minimum_size = Vector2(30, 0)
-
-	func _gui_input(event):
-		if event is InputEventMouseButton and event.pressed:
-			var x = event.position.x
-			if x < 7:
-				on_up.call(track_index)
-			elif x < 14:
-				on_down.call(track_index)
-			else:
-				on_delete.call(track_index)
-
-	func _draw():
-		var font := get_theme_default_font()
-		var fs := get_theme_default_font_size() - 2
-		draw_string(font, Vector2(0, size.y * 0.7), "↑", HORIZONTAL_ALIGNMENT_LEFT, -1, fs)
-		draw_string(font, Vector2(10, size.y * 0.7), "↓", HORIZONTAL_ALIGNMENT_LEFT, -1, fs)
-		draw_string(font, Vector2(20, size.y * 0.7), "×", HORIZONTAL_ALIGNMENT_LEFT, -1, fs)
-
 func _get_track_row_index_at_global_position(global_position: Vector2) -> int:
 	for i in range(track_row_panels.size()):
 		var row_panel := track_row_panels[i]
