@@ -150,7 +150,18 @@ func _update_timeline_size() -> void:
 	custom_minimum_size = Vector2(_get_total_width(), _get_total_height())
 
 func set_bars(value: int) -> void:
-	bars = max(1, value)
+	var new_bars := max(1, value)
+	if new_bars == bars:
+		return
+
+	var new_total_subdivisions := float(new_bars * beats_per_bar * subdivisions_per_beat)
+	var furthest_clip_end := _get_furthest_clip_end()
+
+	if new_total_subdivisions < furthest_clip_end:
+		_show_blocked_action_feedback("Can't reduce bars below the last clip end.")
+		return
+
+	bars = new_bars
 	_update_timeline_size()
 	_emit_status_text()
 	_emit_selected_clip_changed()
@@ -272,6 +283,17 @@ func _get_clip_index_at_position(position: Vector2) -> int:
 
 func _get_clip_end(clip: Dictionary) -> float:
 	return float(clip["start"]) + float(clip["length"])
+
+func _get_furthest_clip_end() -> float:
+	var furthest_end := 0.0
+
+	for clip in fake_clips:
+		if not clip.has("start") or not clip.has("length"):
+			continue
+
+		furthest_end = max(furthest_end, _get_clip_end(clip))
+
+	return furthest_end
 
 func _get_track_clips_sorted(track_index: int, exclude_clip_index: int = -1, exclude_clip_indices: Array[int] = []) -> Array:
 	var clips_on_track: Array[Dictionary] = []

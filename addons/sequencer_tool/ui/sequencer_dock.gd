@@ -342,7 +342,11 @@ func _on_button_delete_clip_pressed() -> void:
 	timeline.delete_selected_clip()
 
 func _on_bars_slider_value_changed(value: float) -> void:
-	timeline.set_bars(int(value))
+	var requested_bars := int(value)
+	timeline.set_bars(requested_bars)
+
+	if int(bars_slider.value) != timeline.bars:
+		bars_slider.value = timeline.bars
 
 func _get_track_row_index_at_global_position(global_position: Vector2) -> int:
 	for i in range(track_row_panels.size()):
