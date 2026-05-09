@@ -309,3 +309,13 @@ The track list UI is redesigned around a selectable, draggable row model with a 
 ### Reasoning
 
 The previous track list layout became too dense and hard to use once track-level controls were added directly into each row. Per-row move/delete controls took up too much horizontal space and the row layout scaled poorly in a narrow dock.
+
+## 2026-05-09 — Split track-editing functions into public wrappers and internal mutators
+
+### Decision
+
+Split track-editing functions into:
+- a public function that owns undo/redo integration
+- an internal function that performs the actual data mutation
+This split keeps the code easier to reason about.
+The internal function stays focused on the actual track data change while the public function becomes the single place that adds the change in undo/redo behavior

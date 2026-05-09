@@ -182,7 +182,7 @@ func set_track_count(value: int) -> void:
 	_emit_tracks_changed()
 	queue_redraw()
 
-func set_track_muted(track_index: int, value: bool) -> void:
+func _set_track_muted_internal(track_index: int, value: bool) -> void:
 	if track_index < 0 or track_index >= track_count:
 		return
 	if track_index >= track_mutes.size():
@@ -191,12 +191,13 @@ func set_track_muted(track_index: int, value: bool) -> void:
 		return
 
 	track_mutes[track_index] = value
-	_emit_sequence_changed()
-	_emit_tracks_changed()
-	queue_redraw()
 
+func set_track_muted(track_index: int, value: bool) -> void:
+	_commit_track_state_change("Set Track Mute", func() -> void:
+		_set_track_muted_internal(track_index, value)
+	)
 
-func set_track_volume(track_index: int, value: float) -> void:
+func _set_track_volume_internal(track_index: int, value: float) -> void:
 	if track_index < 0 or track_index >= track_count:
 		return
 	if track_index >= track_volumes.size():
@@ -207,9 +208,11 @@ func set_track_volume(track_index: int, value: float) -> void:
 		return
 
 	track_volumes[track_index] = resolved_value
-	_emit_sequence_changed()
-	_emit_tracks_changed()
-	queue_redraw()
+
+func set_track_volume(track_index: int, value: float) -> void:
+	_commit_track_state_change("Set Track Volume", func() -> void:
+		_set_track_volume_internal(track_index, value)
+	)
 
 func _timeline_to_x(position: float) -> float:
 	return track_label_width + (position * pixels_per_subdivision)
@@ -585,6 +588,93 @@ func get_track_volume(track_index: int) -> float:
 	if track_index < 0 or track_index >= track_volumes.size():
 		return 1.0
 	return track_volumes[track_index]
+func _build_track_state_snapshot() -> Dictionary:
+	var clips_snapshot: Array[Dictionary] = []
+	for clip in fake_clips:
+		clips_snapshot.append(clip.duplicate(true))
+
+	return {
+		"track_count": track_count,
+		"track_names": track_names.duplicate(),
+		"track_mutes": track_mutes.duplicate(),
+		"track_volumes": track_volumes.duplicate(),
+		"clips": clips_snapshot
+	}
+
+func _apply_track_state_snapshot(state: Dictionary) -> void:
+	track_count = max(1, int(state.get("track_count", track_count)))
+
+	track_names.clear()
+	for track_name in state.get("track_names", []):
+		track_names.append(str(track_name))
+
+	track_mutes.clear()
+	for muted in state.get("track_mutes", []):
+		track_mutes.append(bool(muted))
+
+	track_volumes.clear()
+	for volume in state.get("track_volumes", []):
+		track_volumes.append(max(0.0, float(volume)))
+
+	_ensure_track_names_size()
+
+	fake_clips.clear()
+	for clip_data in state.get("clips", []):
+		if clip_data is Dictionary:
+			fake_clips.append((clip_data as Dictionary).duplicate(true))
+
+	selected_clip_indices = selected_clip_indices.filter(func(index: int) -> bool:
+		return index >= 0 and index < fake_clips.size()
+	)
+
+	if selected_clip_indices.is_empty():
+		selected_clip_index = -1
+	elif not selected_clip_indices.has(selected_clip_index):
+		selected_clip_index = selected_clip_indices.back()
+
+	hovered_clip_index = -1
+	hovered_resize_clip_index = -1
+	is_dragging_clip = false
+	dragged_clip_index = -1
+	drag_grab_offset = 0.0
+	drag_start_mouse_position = Vector2.ZERO
+	drag_original_clip_index = -1
+	drag_original_clip_data = {}
+	drag_original_selected_clips.clear()
+	is_resizing_clip = false
+	resized_clip_index = -1
+	resize_grab_offset = 0.0
+	resize_start_mouse_position = Vector2.ZERO
+	resize_original_clip_index = -1
+	resize_original_clip_data = {}
+	_update_cursor_shape()
+
+	_update_timeline_size()
+	_emit_sequence_changed()
+	_emit_status_text()
+	_emit_selected_clip_changed()
+	_emit_tracks_changed()
+	queue_redraw()
+
+func _commit_track_state_change(action_name: String, mutator: Callable) -> void:
+	var before_state := _build_track_state_snapshot()
+
+	mutator.call()
+
+	var after_state := _build_track_state_snapshot()
+	if before_state == after_state:
+		return
+
+	if editor_undo_redo == null:
+		_apply_track_state_snapshot(after_state)
+		return
+
+	_apply_track_state_snapshot(before_state)
+
+	editor_undo_redo.create_action(action_name)
+	editor_undo_redo.add_do_method(self, "_apply_track_state_snapshot", after_state)
+	editor_undo_redo.add_undo_method(self, "_apply_track_state_snapshot", before_state)
+	editor_undo_redo.commit_action()
 
 func _emit_tracks_changed() -> void:
 	tracks_changed.emit(get_track_names())
@@ -2215,20 +2305,20 @@ func clear_selected_clip() -> void:
 	_emit_selected_clip_changed()
 	queue_redraw()
 
-func add_track() -> void:
+func _add_track_internal() -> void:
 	track_count += 1
 	track_names.append(_create_default_track_name(track_count - 1))
 	track_mutes.append(false)
 	track_volumes.append(1.0)
-	_update_timeline_size()
-	_emit_sequence_changed()
-	_emit_tracks_changed()
-	queue_redraw()
 
-func remove_track(track_index: int) -> void:
+func add_track() -> void:
+	_commit_track_state_change("Add Track", func() -> void:
+		_add_track_internal()
+	)
+
+func _remove_track_internal(track_index: int) -> void:
 	if track_count <= 1:
 		return
-
 	if track_index < 0 or track_index >= track_count:
 		return
 
@@ -2240,7 +2330,6 @@ func remove_track(track_index: int) -> void:
 			continue
 
 		var clip_track := int(clip["track"])
-
 		if clip_track == track_index:
 			clip_indices_to_remove.append(i)
 
@@ -2253,7 +2342,6 @@ func remove_track(track_index: int) -> void:
 			continue
 
 		var clip_track := int(clip["track"])
-
 		if clip_track > track_index:
 			clip["track"] = clip_track - 1
 			fake_clips[i] = clip
@@ -2263,25 +2351,28 @@ func remove_track(track_index: int) -> void:
 	track_volumes.remove_at(track_index)
 	track_count -= 1
 
-	_reset_selection_and_interaction_state()
-	_update_timeline_size()
-	_emit_sequence_changed()
-	_emit_status_text()
-	_emit_selected_clip_changed()
-	_emit_tracks_changed()
-	queue_redraw()
 
+func remove_track(track_index: int) -> void:
+	_commit_track_state_change("Delete Track", func() -> void:
+		_remove_track_internal(track_index)
+	)
 
-func rename_track(track_index: int, value: String) -> void:
+func _rename_track_internal(track_index: int, value: String) -> void:
 	if track_index < 0 or track_index >= track_names.size():
 		return
 
-	track_names[track_index] = value.strip_edges()
-	_emit_sequence_changed()
-	_emit_tracks_changed()
-	queue_redraw()
+	var resolved_name := value.strip_edges()
+	if track_names[track_index] == resolved_name:
+		return
 
-func move_track(from_index: int, to_index: int) -> void:
+	track_names[track_index] = resolved_name
+
+func rename_track(track_index: int, value: String) -> void:
+	_commit_track_state_change("Rename Track", func() -> void:
+		_rename_track_internal(track_index, value)
+	)
+
+func _move_track_internal(from_index: int, to_index: int) -> void:
 	if from_index < 0 or from_index >= track_count:
 		return
 	if to_index < 0 or to_index >= track_count:
@@ -2307,7 +2398,6 @@ func move_track(from_index: int, to_index: int) -> void:
 			continue
 
 		var clip_track := int(clip["track"])
-
 		if clip_track == from_index:
 			clip["track"] = to_index
 		elif from_index < to_index and clip_track > from_index and clip_track <= to_index:
@@ -2317,13 +2407,12 @@ func move_track(from_index: int, to_index: int) -> void:
 
 		fake_clips[i] = clip
 
-	_emit_sequence_changed()
-	_emit_status_text()
-	_emit_selected_clip_changed()
-	_emit_tracks_changed()
-	queue_redraw()
+func move_track(from_index: int, to_index: int) -> void:
+	_commit_track_state_change("Move Track", func() -> void:
+		_move_track_internal(from_index, to_index)
+	)
 
-func duplicate_track(track_index: int) -> void:
+func _duplicate_track_internal(track_index: int) -> void:
 	if track_index < 0 or track_index >= track_count:
 		return
 
@@ -2363,12 +2452,10 @@ func duplicate_track(track_index: int) -> void:
 	for duplicated_clip in duplicated_clips:
 		fake_clips.append(duplicated_clip)
 
-	_update_timeline_size()
-	_emit_sequence_changed()
-	_emit_status_text()
-	_emit_selected_clip_changed()
-	_emit_tracks_changed()
-	queue_redraw()
+func duplicate_track(track_index: int) -> void:
+	_commit_track_state_change("Duplicate Track", func() -> void:
+		_duplicate_track_internal(track_index)
+	)
 
 func _get_subdivisions_per_second() -> float:
 	return (bpm / 60.0) * float(subdivisions_per_beat)
