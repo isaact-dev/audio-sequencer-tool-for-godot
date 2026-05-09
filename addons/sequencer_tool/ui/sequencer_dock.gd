@@ -61,7 +61,6 @@ var pick_audio_no_audio_button: Button = null
 
 var selected_track_index: int = -1
 var dragged_track_index: int = -1
-var drag_track_target_index: int = -1
 var track_row_panels: Array[PanelContainer] = []
 var pending_drag_track_index: int = -1
 var is_dragging_track_row: bool = false
@@ -948,28 +947,6 @@ func _on_track_drag_strip_gui_input(event: InputEvent, track_index: int) -> void
 			drag_hover_track_index = hovered_index
 			drag_insert_after = insert_after
 			_refresh_track_row_selection_styles()
-
-	if event is InputEventMouseMotion:
-		var mouse_motion_event := event as InputEventMouseMotion
-
-		if pending_drag_track_index == -1:
-			return
-		if (mouse_motion_event.button_mask & MOUSE_BUTTON_MASK_LEFT) == 0:
-			return
-
-		if not is_dragging_track_row:
-			if mouse_motion_event.global_position.distance_to(track_drag_start_global_position) < 6.0:
-				return
-
-			is_dragging_track_row = true
-			dragged_track_index = pending_drag_track_index
-			drag_track_target_index = pending_drag_track_index
-
-		var hovered_index := _get_track_row_index_at_global_position(mouse_motion_event.global_position)
-		if hovered_index != -1 and hovered_index != drag_track_target_index:
-			drag_track_target_index = hovered_index
-			_refresh_track_row_selection_styles()
-
 
 func _on_clip_volume_spin_value_changed(value: float) -> void:
 	if _updating_clip_settings_ui:
