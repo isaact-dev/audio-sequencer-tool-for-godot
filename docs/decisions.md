@@ -319,3 +319,19 @@ Split track-editing functions into:
 - an internal function that performs the actual data mutation
 This split keeps the code easier to reason about.
 The internal function stays focused on the actual track data change while the public function becomes the single place that adds the change in undo/redo behavior
+
+## 2026-05-10 — Clip start preview triggering should use a very small positive epsilon offset
+
+### Decision
+Clip start preview triggering should use a very small positive epsilon offset instead of relying on exact start-boundary equality.
+The preview trigger point is treated as:
+
+clip_start + epsilon
+
+A small epsilon should be used specifically to protect clip starts at timeline zero and similar boundary cases.
+
+## 2026-05-10 — Audio preview triggering should support per-frame deduping
+
+### Decision
+Audio preview triggering should support per-frame deduping so the same clip cannot be previewed more than once in a single frame.
+This deduping should be applied inside the audio preview runtime logic.

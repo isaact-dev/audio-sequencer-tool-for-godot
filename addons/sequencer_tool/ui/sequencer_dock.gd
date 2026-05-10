@@ -42,7 +42,7 @@ extends VBoxContainer
 @onready var source_pick_button = $HSplitContainer/SettingsHost/ClipSettings/ClipSourceRow/ClipSourcePickButton
 @onready var pick_audio_dialog = $PickAudioDialog
 @onready var playback_speed_spin = $HSplitContainer/SettingsHost/ClipSettings/ClipPlaybackSpeedSpin
-
+@onready var audio_preview_controller = $AudioPreviewController
 
 var editor_undo_redo: EditorUndoRedoManager = null
 
@@ -81,7 +81,8 @@ func _ready() -> void:
 
 	if editor_undo_redo != null:
 		timeline.set_editor_undo_redo(editor_undo_redo)
-
+	if audio_preview_controller != null:
+			audio_preview_controller.set_timeline(timeline)
 
 	status_label.text = timeline._build_status_text()
 

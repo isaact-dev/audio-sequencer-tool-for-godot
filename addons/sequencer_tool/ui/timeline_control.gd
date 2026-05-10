@@ -51,7 +51,7 @@ var track_color_palette: Array[Color] = [
 var blocked_action_flash_time: float = 0.0
 var blocked_action_flash_fill_color := Color(0.749, 0.18, 0.18, 0.039)
 var blocked_action_flash_outline_color := Color(0.949, 0.302, 0.302, 0.486)
-var fake_clips: Array[Dictionary] = []
+var clips: Array[Dictionary] = []
 
 var track_names: Array[String] = []
 var track_mutes: Array[bool] = []
@@ -116,7 +116,6 @@ func _ready() -> void:
 	focus_mode = Control.FOCUS_ALL
 	set_process(true)
 
-	_create_demo_clips()
 	_ensure_track_names_size()
 	_update_timeline_size()
 	call_deferred("_emit_status_text")
@@ -183,12 +182,12 @@ func set_track_count(value: int) -> void:
 	track_count = max(1, value)
 	_ensure_track_names_size()
 
-	for i in range(fake_clips.size()):
-		var clip := fake_clips[i]
+	for i in range(clips.size()):
+		var clip := clips[i]
 		if not clip.has("track"):
 			continue
 		clip["track"] = clamp(int(clip["track"]), 0, track_count - 1)
-		fake_clips[i] = clip
+		clips[i] = clip
 
 	_update_timeline_size()
 	_emit_status_text()
@@ -259,8 +258,8 @@ func _get_clip_rect(clip: Dictionary) -> Rect2:
 	return Rect2(x, y, width, height)
 
 func _get_clip_index_at_position(position: Vector2) -> int:
-	for i in range(fake_clips.size() - 1, -1, -1):
-		var clip := fake_clips[i]
+	for i in range(clips.size() - 1, -1, -1):
+		var clip := clips[i]
 
 		if not clip.has("track") or not clip.has("start") or not clip.has("length"):
 			continue
@@ -290,7 +289,7 @@ func _get_clip_end(clip: Dictionary) -> float:
 func _get_furthest_clip_end() -> float:
 	var furthest_end := 0.0
 
-	for clip in fake_clips:
+	for clip in clips:
 		if not clip.has("start") or not clip.has("length"):
 			continue
 
@@ -309,14 +308,14 @@ func _apply_bars_value(value: int) -> void:
 func _get_track_clips_sorted(track_index: int, exclude_clip_index: int = -1, exclude_clip_indices: Array[int] = []) -> Array:
 	var clips_on_track: Array[Dictionary] = []
 
-	for i in range(fake_clips.size()):
+	for i in range(clips.size()):
 		if i == exclude_clip_index:
 			continue
 
 		if exclude_clip_indices.has(i):
 			continue
 
-		var clip := fake_clips[i]
+		var clip := clips[i]
 		if not clip.has("track") or not clip.has("start") or not clip.has("length"):
 			continue
 
@@ -405,16 +404,16 @@ func _get_effective_max_clip_length(clip_index: int, clip: Dictionary) -> float:
 
 
 func get_clip_max_length(clip_index: int) -> float:
-	if clip_index < 0 or clip_index >= fake_clips.size():
+	if clip_index < 0 or clip_index >= clips.size():
 		return min_clip_length
 
-	return _get_effective_max_clip_length(clip_index, fake_clips[clip_index])
+	return _get_effective_max_clip_length(clip_index, clips[clip_index])
 
 func _clamp_all_clip_lengths_for_current_tempo() -> bool:
 	var changed := false
 
-	for i in range(fake_clips.size()):
-		var clip := fake_clips[i]
+	for i in range(clips.size()):
+		var clip := clips[i]
 		if not clip.has("length"):
 			continue
 
@@ -426,7 +425,7 @@ func _clamp_all_clip_lengths_for_current_tempo() -> bool:
 			continue
 
 		clip["length"] = clamped_length
-		fake_clips[i] = clip
+		clips[i] = clip
 		changed = true
 
 	return changed
@@ -434,7 +433,7 @@ func _clamp_all_clip_lengths_for_current_tempo() -> bool:
 func _build_bpm_state_snapshot() -> Dictionary:
 	var clips_snapshot: Array[Dictionary] = []
 
-	for clip in fake_clips:
+	for clip in clips:
 		clips_snapshot.append(clip.duplicate(true))
 
 	return {
@@ -445,10 +444,10 @@ func _build_bpm_state_snapshot() -> Dictionary:
 func _apply_bpm_state_snapshot(state: Dictionary) -> void:
 	bpm = max(1.0, float(state.get("bpm", bpm)))
 
-	fake_clips.clear()
+	clips.clear()
 	for clip_data in state.get("clips", []):
 		if clip_data is Dictionary:
-			fake_clips.append((clip_data as Dictionary).duplicate(true))
+			clips.append((clip_data as Dictionary).duplicate(true))
 
 	_emit_sequence_changed()
 	_emit_status_text()
@@ -545,10 +544,10 @@ func _build_status_text() -> String:
 			selected_clip_indices.size(),
 			snap_text
 		]
-	elif selected_clip_index < 0 or selected_clip_index >= fake_clips.size():
+	elif selected_clip_index < 0 or selected_clip_index >= clips.size():
 		base_text = "Selected: None | Start: - | Length: - | Snap: %s" % snap_text
 	else:
-		var clip := fake_clips[selected_clip_index]
+		var clip := clips[selected_clip_index]
 
 		if not clip.has("name") or not clip.has("start") or not clip.has("length"):
 			base_text = "Selected: Invalid | Start: - | Length: - | Snap: %s" % snap_text
@@ -668,7 +667,7 @@ func get_track_volume(track_index: int) -> float:
 	return track_volumes[track_index]
 func _build_track_state_snapshot() -> Dictionary:
 	var clips_snapshot: Array[Dictionary] = []
-	for clip in fake_clips:
+	for clip in clips:
 		clips_snapshot.append(clip.duplicate(true))
 
 	return {
@@ -696,13 +695,13 @@ func _apply_track_state_snapshot(state: Dictionary) -> void:
 
 	_ensure_track_names_size()
 
-	fake_clips.clear()
+	clips.clear()
 	for clip_data in state.get("clips", []):
 		if clip_data is Dictionary:
-			fake_clips.append((clip_data as Dictionary).duplicate(true))
+			clips.append((clip_data as Dictionary).duplicate(true))
 
 	selected_clip_indices = selected_clip_indices.filter(func(index: int) -> bool:
-		return index >= 0 and index < fake_clips.size()
+		return index >= 0 and index < clips.size()
 	)
 
 	if selected_clip_indices.is_empty():
@@ -806,7 +805,7 @@ func _set_selected_clip_indices(indices: Array[int]) -> void:
 	selected_clip_indices.clear()
 
 	for clip_index in indices:
-		if clip_index >= 0 and clip_index < fake_clips.size():
+		if clip_index >= 0 and clip_index < clips.size():
 			selected_clip_indices.append(clip_index)
 
 	if selected_clip_indices.is_empty():
@@ -821,7 +820,7 @@ func _set_selected_clip_indices(indices: Array[int]) -> void:
 func get_sequence_data() -> Dictionary:
 	var serialized_clips: Array[Dictionary] = []
 
-	for clip in fake_clips:
+	for clip in clips:
 		var serialized_clip: Dictionary = {
 			"track": int(clip.get("track", 0)),
 			"start": float(clip.get("start", 0.0)),
@@ -874,7 +873,7 @@ func load_sequence_data(data: Dictionary) -> void:
 			track_volumes.append(max(0.0, float(volume)))
 	_ensure_track_names_size()
 
-	fake_clips.clear()
+	clips.clear()
 
 	var loaded_clips = data.get("clips", [])
 	if loaded_clips is Array:
@@ -899,7 +898,7 @@ func load_sequence_data(data: Dictionary) -> void:
 			}
 			var max_length := min(max(min_clip_length, float(_get_total_subdivisions()) - clip_start),_get_clip_max_length_from_audio(clip))
 			clip["length"] = clamp(clip_length, min_clip_length, max_length)
-			fake_clips.append(clip)
+			clips.append(clip)
 
 	_reset_selection_and_interaction_state()
 	_update_timeline_size()
@@ -958,7 +957,7 @@ func _drop_data(at_position: Vector2, data: Variant) -> void:
 		_show_blocked_action_feedback("No room to add dropped audio on this track.")
 		return
 
-	var insert_start_index := fake_clips.size()
+	var insert_start_index := clips.size()
 	var new_selection: Array[int] = []
 	for i in range(dropped_clips.size()):
 		new_selection.append(insert_start_index + i)
@@ -1199,10 +1198,10 @@ func _begin_clip_drag(clip_index: int, mouse_position: Vector2) -> void:
 	if not selected_clip_indices.has(clip_index):
 		return
 
-	if clip_index < 0 or clip_index >= fake_clips.size():
+	if clip_index < 0 or clip_index >= clips.size():
 		return
 	drag_start_mouse_position = mouse_position
-	var clip := fake_clips[clip_index]
+	var clip := clips[clip_index]
 
 	if not clip.has("start"):
 		return
@@ -1212,8 +1211,8 @@ func _begin_clip_drag(clip_index: int, mouse_position: Vector2) -> void:
 
 	drag_original_selected_clips.clear()
 	for i in selected_clip_indices:
-		if i >= 0 and i < fake_clips.size():
-			drag_original_selected_clips[i] = fake_clips[i].duplicate(true)
+		if i >= 0 and i < clips.size():
+			drag_original_selected_clips[i] = clips[i].duplicate(true)
 
 	var clip_start: float = clip["start"]
 	var mouse_timeline_position := _x_to_timeline(mouse_position.x)
@@ -1241,8 +1240,8 @@ func prepare_next_clip_insertion_context() -> void:
 func _get_default_clip_insertion_target(clip_length: float) -> Dictionary:
 	var mouse_position := get_local_mouse_position()
 
-	if selected_clip_index >= 0 and selected_clip_index < fake_clips.size():
-		var selected_clip := fake_clips[selected_clip_index]
+	if selected_clip_index >= 0 and selected_clip_index < clips.size():
+		var selected_clip := clips[selected_clip_index]
 
 		if selected_clip.has("track") and selected_clip.has("start") and selected_clip.has("length"):
 			return {
@@ -1265,7 +1264,7 @@ func _update_clip_drag(mouse_position: Vector2) -> void:
 	if not is_dragging_clip or is_resizing_clip:
 		return
 
-	if dragged_clip_index < 0 or dragged_clip_index >= fake_clips.size():
+	if dragged_clip_index < 0 or dragged_clip_index >= clips.size():
 		return
 
 	if mouse_position.distance_to(drag_start_mouse_position) < 4.0:
@@ -1320,14 +1319,14 @@ func _update_clip_drag(mouse_position: Vector2) -> void:
 			var original = drag_original_selected_clips[clip_index]
 			var clip = original.duplicate(true)
 			clip["start"] = float(original["start"]) + delta
-			fake_clips[clip_index] = clip
+			clips[clip_index] = clip
 
 		_emit_status_text()
 		_emit_selected_clip_changed()
 		queue_redraw()
 		return
 
-	var clip := fake_clips[dragged_clip_index]
+	var clip := clips[dragged_clip_index]
 
 	if not clip.has("start") or not clip.has("length") or not clip.has("track"):
 		return
@@ -1354,7 +1353,7 @@ func _update_clip_drag(mouse_position: Vector2) -> void:
 	clip["track"] = new_track
 	clip["start"] = new_start
 
-	fake_clips[dragged_clip_index] = clip
+	clips[dragged_clip_index] = clip
 
 	_emit_status_text()
 	_emit_selected_clip_changed()
@@ -1372,7 +1371,7 @@ func _end_clip_drag() -> void:
 
 		for clip_index in drag_original_selected_clips.keys():
 			before[clip_index] = drag_original_selected_clips[clip_index].duplicate(true)
-			after[clip_index] = fake_clips[clip_index].duplicate(true)
+			after[clip_index] = clips[clip_index].duplicate(true)
 
 		if editor_undo_redo != null:
 			var dragged_selection := selected_clip_indices.duplicate()
@@ -1395,8 +1394,8 @@ func _end_clip_drag() -> void:
 	var before_clip: Dictionary = {}
 	var after_clip: Dictionary = {}
 
-	if not handled_multiselect_drag and drag_original_clip_index >= 0 and drag_original_clip_index < fake_clips.size() and not drag_original_clip_data.is_empty():
-		var current_clip := fake_clips[drag_original_clip_index]
+	if not handled_multiselect_drag and drag_original_clip_index >= 0 and drag_original_clip_index < clips.size() and not drag_original_clip_data.is_empty():
+		var current_clip := clips[drag_original_clip_index]
 
 		var original_start := float(drag_original_clip_data.get("start", 0.0))
 		var current_start := float(current_clip.get("start", 0.0))
@@ -1487,7 +1486,7 @@ func add_clip_at_position(audio_path: String, track_index: int, desired_start: f
 	if new_clip.is_empty():
 		return -1
 
-	var insert_index := fake_clips.size()
+	var insert_index := clips.size()
 
 	if editor_undo_redo == null:
 		_insert_clip_at(insert_index, new_clip)
@@ -1524,8 +1523,8 @@ func add_clip(audio_path: String = "") -> void:
 	var desired_start := _snap_timeline_position(float(insertion_context.get("playhead_position", playhead_position)))
 
 	var context_selected_clip_index := int(insertion_context.get("selected_clip_index", selected_clip_index))
-	if context_selected_clip_index >= 0 and context_selected_clip_index < fake_clips.size():
-		var selected_clip := fake_clips[context_selected_clip_index]
+	if context_selected_clip_index >= 0 and context_selected_clip_index < clips.size():
+		var selected_clip := clips[context_selected_clip_index]
 		if selected_clip.has("track") and selected_clip.has("start") and selected_clip.has("length"):
 			new_track = int(selected_clip["track"])
 			desired_start = _snap_timeline_position(float(selected_clip["start"]) + float(selected_clip["length"]))
@@ -1537,7 +1536,7 @@ func add_clip(audio_path: String = "") -> void:
 		_show_blocked_action_feedback("No room to add a clip on this track.")
 		return
 
-	var insert_index := fake_clips.size()
+	var insert_index := clips.size()
 
 	if editor_undo_redo == null:
 		_insert_clip_at(insert_index, new_clip)
@@ -1555,7 +1554,7 @@ func duplicate_selected_clip() -> void:
 		return
 	var source_indices: Array[int] = []
 	for clip_index in selected_clip_indices:
-		if clip_index >= 0 and clip_index < fake_clips.size():
+		if clip_index >= 0 and clip_index < clips.size():
 			source_indices.append(clip_index)
 
 	source_indices.sort()
@@ -1566,7 +1565,7 @@ func duplicate_selected_clip() -> void:
 		var duplicated_clips: Array[Dictionary] = []
 
 		for clip_index in source_indices:
-			var source_clip := fake_clips[clip_index]
+			var source_clip := clips[clip_index]
 
 			if not source_clip.has("track") or not source_clip.has("start") or not source_clip.has("length"):
 				_show_blocked_action_feedback("Selected clip is invalid for duplication.")
@@ -1588,7 +1587,7 @@ func duplicate_selected_clip() -> void:
 			var group_can_fit := true
 
 			for clip_index in source_indices:
-				var source_clip := fake_clips[clip_index]
+				var source_clip := clips[clip_index]
 				var duplicate_track := int(source_clip["track"])
 				var duplicate_length := float(source_clip["length"])
 				var preferred_start = float(source_clip["start"]) + group_delta
@@ -1617,12 +1616,12 @@ func duplicate_selected_clip() -> void:
 			return
 
 		for clip_index in source_indices:
-			var source_clip := fake_clips[clip_index]
+			var source_clip := clips[clip_index]
 			var duplicated_clip := source_clip.duplicate(true)
 			duplicated_clip["start"] = float(source_clip["start"]) + group_delta
 			duplicated_clip["name"] = "%s Copy" % str(source_clip.get("name", "Clip"))
 			duplicated_clips.append(duplicated_clip)
-		var insert_start_index := fake_clips.size()
+		var insert_start_index := clips.size()
 		var new_selection: Array[int] = []
 
 		for i in range(duplicated_clips.size()):
@@ -1650,11 +1649,11 @@ func duplicate_selected_clip() -> void:
 		_ensure_clip_visible(new_selection.back())
 		return
 
-	if selected_clip_index < 0 or selected_clip_index >= fake_clips.size():
+	if selected_clip_index < 0 or selected_clip_index >= clips.size():
 		_show_blocked_action_feedback("No clip selected to duplicate.")
 		return
 
-	var source_clip := fake_clips[selected_clip_index]
+	var source_clip := clips[selected_clip_index]
 	if not source_clip.has("track") or not source_clip.has("start") or not source_clip.has("length"):
 		_show_blocked_action_feedback("Selected clip is invalid for duplication.")
 		return
@@ -1695,14 +1694,14 @@ func copy_selected_clips() -> void:
 	var source_indices: Array[int] = []
 
 	for clip_index in selected_clip_indices:
-		if clip_index >= 0 and clip_index < fake_clips.size():
+		if clip_index >= 0 and clip_index < clips.size():
 			source_indices.append(clip_index)
 
 	source_indices.sort()
 	clip_clipboard.clear()
 
 	for clip_index in source_indices:
-		clip_clipboard.append(fake_clips[clip_index].duplicate(true))
+		clip_clipboard.append(clips[clip_index].duplicate(true))
 
 	if clip_clipboard.is_empty():
 		_show_blocked_action_feedback("No clips selected to copy.")
@@ -1798,7 +1797,7 @@ func paste_clipboard() -> void:
 		pasted_clip["track"] = int(clip["track"]) + track_offset
 		pasted_clips.append(pasted_clip)
 
-	var insert_start_index := fake_clips.size()
+	var insert_start_index := clips.size()
 	var new_selection: Array[int] = []
 
 	for i in range(pasted_clips.size()):
@@ -1831,7 +1830,7 @@ func delete_selected_clip() -> void:
 
 	var clip_indices: Array[int] = []
 	for clip_index in selected_clip_indices:
-		if clip_index >= 0 and clip_index < fake_clips.size():
+		if clip_index >= 0 and clip_index < clips.size():
 			clip_indices.append(clip_index)
 
 	if clip_indices.is_empty():
@@ -1847,7 +1846,7 @@ func delete_selected_clip() -> void:
 	editor_undo_redo.create_action("Delete Clips" if clip_indices.size() > 1 else "Delete Clip")
 	for i in range(clip_indices.size() - 1, -1, -1):
 		var clip_index := clip_indices[i]
-		var clip_data := fake_clips[clip_index].duplicate(true)
+		var clip_data := clips[clip_index].duplicate(true)
 		editor_undo_redo.add_do_method(self, "_remove_clip_at", clip_index)
 		editor_undo_redo.add_undo_method(self, "_insert_clip_at", clip_index, clip_data)
 	editor_undo_redo.commit_action()
@@ -1860,7 +1859,7 @@ func _nudge_selected_clip(amount: float, use_snap: bool) -> void:
 
 	var clip_indices: Array[int] = []
 	for clip_index in selected_clip_indices:
-		if clip_index >= 0 and clip_index < fake_clips.size():
+		if clip_index >= 0 and clip_index < clips.size():
 			clip_indices.append(clip_index)
 
 	if clip_indices.is_empty():
@@ -1870,7 +1869,7 @@ func _nudge_selected_clip(amount: float, use_snap: bool) -> void:
 		selected_clip_index = clip_indices.back()
 
 	if clip_indices.size() > 1:
-		var primary_clip := fake_clips[selected_clip_index]
+		var primary_clip := clips[selected_clip_index]
 		if not primary_clip.has("start"):
 			return
 
@@ -1885,7 +1884,7 @@ func _nudge_selected_clip(amount: float, use_snap: bool) -> void:
 			return
 
 		for clip_index in clip_indices:
-			var clip := fake_clips[clip_index]
+			var clip := clips[clip_index]
 			if not clip.has("start") or not clip.has("length") or not clip.has("track"):
 				return
 
@@ -1918,16 +1917,16 @@ func _nudge_selected_clip(amount: float, use_snap: bool) -> void:
 
 		var before_clips := {}
 		for clip_index in clip_indices:
-			before_clips[clip_index] = fake_clips[clip_index].duplicate(true)
+			before_clips[clip_index] = clips[clip_index].duplicate(true)
 
 		for clip_index in clip_indices:
-			var clip := fake_clips[clip_index]
+			var clip := clips[clip_index]
 			clip["start"] = float(clip["start"]) + resolved_delta
-			fake_clips[clip_index] = clip
+			clips[clip_index] = clip
 
 		var after_clips := {}
 		for clip_index in clip_indices:
-			after_clips[clip_index] = fake_clips[clip_index].duplicate(true)
+			after_clips[clip_index] = clips[clip_index].duplicate(true)
 
 		_emit_sequence_changed()
 		_emit_status_text()
@@ -1945,10 +1944,10 @@ func _nudge_selected_clip(amount: float, use_snap: bool) -> void:
 
 		return
 
-	if selected_clip_index < 0 or selected_clip_index >= fake_clips.size():
+	if selected_clip_index < 0 or selected_clip_index >= clips.size():
 		return
 
-	var clip := fake_clips[selected_clip_index]
+	var clip := clips[selected_clip_index]
 	if not clip.has("start") or not clip.has("length") or not clip.has("track"):
 		return
 
@@ -1983,7 +1982,7 @@ func _nudge_selected_clip(amount: float, use_snap: bool) -> void:
 
 	var before_clip := clip.duplicate(true)
 	clip["start"] = new_start
-	fake_clips[selected_clip_index] = clip
+	clips[selected_clip_index] = clip
 	var after_clip := clip.duplicate(true)
 
 	_emit_sequence_changed()
@@ -1999,10 +1998,10 @@ func _nudge_selected_clip(amount: float, use_snap: bool) -> void:
 
 
 func set_selected_clip_name(value: String) -> void:
-	if selected_clip_index < 0 or selected_clip_index >= fake_clips.size():
+	if selected_clip_index < 0 or selected_clip_index >= clips.size():
 		return
 
-	var clip := fake_clips[selected_clip_index].duplicate(true)
+	var clip := clips[selected_clip_index].duplicate(true)
 	clip["name"] = value
 	_commit_selected_clip_change("Rename Clip", clip)
 
@@ -2010,10 +2009,10 @@ func set_selected_clip_track(value: int) -> void:
 	if _is_editing_blocked_by_playback():
 		return
 
-	if selected_clip_index < 0 or selected_clip_index >= fake_clips.size():
+	if selected_clip_index < 0 or selected_clip_index >= clips.size():
 		return
 
-	var clip := fake_clips[selected_clip_index].duplicate(true)
+	var clip := clips[selected_clip_index].duplicate(true)
 	var target_track := clamp(value, 0, track_count - 1)
 	var start: float = clip["start"]
 	var length: float = clip["length"]
@@ -2030,10 +2029,10 @@ func set_selected_clip_start(value: float) -> void:
 	if _is_editing_blocked_by_playback():
 		return
 
-	if selected_clip_index < 0 or selected_clip_index >= fake_clips.size():
+	if selected_clip_index < 0 or selected_clip_index >= clips.size():
 		return
 
-	var clip := fake_clips[selected_clip_index].duplicate(true)
+	var clip := clips[selected_clip_index].duplicate(true)
 
 	if not clip.has("length"):
 		return
@@ -2052,10 +2051,10 @@ func set_selected_clip_length(value: float) -> void:
 	if _is_editing_blocked_by_playback():
 		return
 
-	if selected_clip_index < 0 or selected_clip_index >= fake_clips.size():
+	if selected_clip_index < 0 or selected_clip_index >= clips.size():
 		return
 
-	var clip := fake_clips[selected_clip_index].duplicate(true)
+	var clip := clips[selected_clip_index].duplicate(true)
 
 	if not clip.has("start"):
 		return
@@ -2067,10 +2066,10 @@ func set_selected_clip_length(value: float) -> void:
 	_commit_selected_clip_change("Change Clip Length", clip)
 
 func _set_clip_data(clip_index: int, clip_data: Dictionary) -> void:
-	if clip_index < 0 or clip_index >= fake_clips.size():
+	if clip_index < 0 or clip_index >= clips.size():
 		return
 
-	fake_clips[clip_index] = clip_data.duplicate(true)
+	clips[clip_index] = clip_data.duplicate(true)
 	selected_clip_index = clip_index
 	selected_clip_indices = [selected_clip_index]
 	_emit_sequence_changed()
@@ -2079,10 +2078,10 @@ func _set_clip_data(clip_index: int, clip_data: Dictionary) -> void:
 	queue_redraw()
 
 func set_selected_clip_audio_path(value: String) -> void:
-	if selected_clip_index < 0 or selected_clip_index >= fake_clips.size():
+	if selected_clip_index < 0 or selected_clip_index >= clips.size():
 		return
 
-	var clip := fake_clips[selected_clip_index].duplicate(true)
+	var clip := clips[selected_clip_index].duplicate(true)
 	clip["audio_path"] = value.strip_edges()
 	clip["length"] = clamp(
 		float(clip.get("length", min_clip_length)),
@@ -2095,10 +2094,10 @@ func set_selected_clip_audio_path(value: String) -> void:
 func set_selected_clip_playback_speed(value: float) -> void:
 	if _is_editing_blocked_by_playback():
 		return
-	if selected_clip_index < 0 or selected_clip_index >= fake_clips.size():
+	if selected_clip_index < 0 or selected_clip_index >= clips.size():
 		return
 
-	var clip := fake_clips[selected_clip_index].duplicate(true)
+	var clip := clips[selected_clip_index].duplicate(true)
 	clip["playback_speed"] = max(0.001, value)
 	clip["length"] = clamp(
 		float(clip.get("length", min_clip_length)),
@@ -2109,19 +2108,19 @@ func set_selected_clip_playback_speed(value: float) -> void:
 	_commit_selected_clip_change("Set Clip Playback Speed", clip)
 
 func set_selected_clip_volume(value: float) -> void:
-	if selected_clip_index < 0 or selected_clip_index >= fake_clips.size():
+	if selected_clip_index < 0 or selected_clip_index >= clips.size():
 		return
 
-	var clip := fake_clips[selected_clip_index].duplicate(true)
+	var clip := clips[selected_clip_index].duplicate(true)
 	clip["volume"] = max(0.0, value)
 	_commit_selected_clip_change("Set Clip Volume", clip)
 
 func _commit_selected_clip_change(action_name: String, updated_clip: Dictionary) -> void:
-	if selected_clip_index < 0 or selected_clip_index >= fake_clips.size():
+	if selected_clip_index < 0 or selected_clip_index >= clips.size():
 		return
 
 	var clip_index := selected_clip_index
-	var before_clip := fake_clips[clip_index].duplicate(true)
+	var before_clip := clips[clip_index].duplicate(true)
 	var after_clip := updated_clip.duplicate(true)
 
 	if before_clip == after_clip:
@@ -2137,8 +2136,8 @@ func _commit_selected_clip_change(action_name: String, updated_clip: Dictionary)
 	editor_undo_redo.commit_action()
 
 func _insert_clip_at(clip_index: int, clip_data: Dictionary) -> void:
-	clip_index = clamp(clip_index, 0, fake_clips.size())
-	fake_clips.insert(clip_index, clip_data.duplicate(true))
+	clip_index = clamp(clip_index, 0, clips.size())
+	clips.insert(clip_index, clip_data.duplicate(true))
 	selected_clip_index = clip_index
 	selected_clip_indices = [selected_clip_index]
 	_emit_sequence_changed()
@@ -2147,10 +2146,10 @@ func _insert_clip_at(clip_index: int, clip_data: Dictionary) -> void:
 	queue_redraw()
 
 func _remove_clip_at(clip_index: int) -> void:
-	if clip_index < 0 or clip_index >= fake_clips.size():
+	if clip_index < 0 or clip_index >= clips.size():
 		return
 
-	fake_clips.remove_at(clip_index)
+	clips.remove_at(clip_index)
 	selected_clip_indices.clear()
 	selected_clip_index = -1
 	hovered_clip_index = -1
@@ -2213,10 +2212,10 @@ func _ensure_rect_visible_horizontally(rect: Rect2, margin: float = 0.0) -> void
 	_set_horizontal_scroll(target_scroll)
 
 func _ensure_clip_visible(clip_index: int) -> void:
-	if clip_index < 0 or clip_index >= fake_clips.size():
+	if clip_index < 0 or clip_index >= clips.size():
 		return
 
-	var clip := fake_clips[clip_index]
+	var clip := clips[clip_index]
 	if not clip.has("track") or not clip.has("start") or not clip.has("length"):
 		return
 
@@ -2265,8 +2264,8 @@ func _get_resize_handle_rect(clip: Dictionary) -> Rect2:
 	)
 
 func _get_resize_handle_clip_index_at_position(position: Vector2) -> int:
-	for i in range(fake_clips.size() - 1, -1, -1):
-		var clip := fake_clips[i]
+	for i in range(clips.size() - 1, -1, -1):
+		var clip := clips[i]
 
 		if not clip.has("track") or not clip.has("start") or not clip.has("length"):
 			continue
@@ -2304,10 +2303,10 @@ func _begin_clip_resize(clip_index: int, mouse_position: Vector2) -> void:
 	if _is_editing_blocked_by_playback():
 		return
 
-	if clip_index < 0 or clip_index >= fake_clips.size():
+	if clip_index < 0 or clip_index >= clips.size():
 		return
 	resize_start_mouse_position = mouse_position
-	var clip := fake_clips[clip_index]
+	var clip := clips[clip_index]
 
 	if not clip.has("start") or not clip.has("length"):
 		return
@@ -2339,13 +2338,13 @@ func _update_clip_resize(mouse_position: Vector2) -> void:
 	if not is_resizing_clip:
 		return
 
-	if resized_clip_index < 0 or resized_clip_index >= fake_clips.size():
+	if resized_clip_index < 0 or resized_clip_index >= clips.size():
 		return
 
 	if mouse_position.distance_to(resize_start_mouse_position) < 4.0:
 		return
 
-	var clip := fake_clips[resized_clip_index]
+	var clip := clips[resized_clip_index]
 
 	if not clip.has("start") or not clip.has("length"):
 		return
@@ -2364,7 +2363,7 @@ func _update_clip_resize(mouse_position: Vector2) -> void:
 	var new_length := new_end - start
 
 	clip["length"] = new_length
-	fake_clips[resized_clip_index] = clip
+	clips[resized_clip_index] = clip
 
 	_emit_status_text()
 	_emit_selected_clip_changed()
@@ -2380,8 +2379,8 @@ func _end_clip_resize() -> void:
 	var before_clip: Dictionary = {}
 	var after_clip: Dictionary = {}
 
-	if resize_original_clip_index >= 0 and resize_original_clip_index < fake_clips.size() and not resize_original_clip_data.is_empty():
-		var current_clip := fake_clips[resize_original_clip_index]
+	if resize_original_clip_index >= 0 and resize_original_clip_index < clips.size() and not resize_original_clip_data.is_empty():
+		var current_clip := clips[resize_original_clip_index]
 		if resize_original_clip_data != current_clip:
 			should_register_undo = true
 			before_clip = resize_original_clip_data.duplicate(true)
@@ -2408,10 +2407,10 @@ func _end_clip_resize() -> void:
 
 
 func _get_selected_clip_data() -> Dictionary:
-	if selected_clip_index < 0 or selected_clip_index >= fake_clips.size():
+	if selected_clip_index < 0 or selected_clip_index >= clips.size():
 		return {}
 
-	return fake_clips[selected_clip_index].duplicate(true)
+	return clips[selected_clip_index].duplicate(true)
 
 func _emit_selected_clip_changed() -> void:
 	if selected_clip_indices.size() == 1:
@@ -2448,8 +2447,8 @@ func _remove_track_internal(track_index: int) -> void:
 
 	var clip_indices_to_remove: Array[int] = []
 
-	for i in range(fake_clips.size()):
-		var clip := fake_clips[i]
+	for i in range(clips.size()):
+		var clip := clips[i]
 		if not clip.has("track"):
 			continue
 
@@ -2458,17 +2457,17 @@ func _remove_track_internal(track_index: int) -> void:
 			clip_indices_to_remove.append(i)
 
 	for i in range(clip_indices_to_remove.size() - 1, -1, -1):
-		fake_clips.remove_at(clip_indices_to_remove[i])
+		clips.remove_at(clip_indices_to_remove[i])
 
-	for i in range(fake_clips.size()):
-		var clip := fake_clips[i]
+	for i in range(clips.size()):
+		var clip := clips[i]
 		if not clip.has("track"):
 			continue
 
 		var clip_track := int(clip["track"])
 		if clip_track > track_index:
 			clip["track"] = clip_track - 1
-			fake_clips[i] = clip
+			clips[i] = clip
 
 	track_names.remove_at(track_index)
 	track_mutes.remove_at(track_index)
@@ -2516,8 +2515,8 @@ func _move_track_internal(from_index: int, to_index: int) -> void:
 	track_volumes.remove_at(from_index)
 	track_volumes.insert(to_index, moved_volume)
 
-	for i in range(fake_clips.size()):
-		var clip := fake_clips[i]
+	for i in range(clips.size()):
+		var clip := clips[i]
 		if not clip.has("track"):
 			continue
 
@@ -2529,7 +2528,7 @@ func _move_track_internal(from_index: int, to_index: int) -> void:
 		elif from_index > to_index and clip_track >= to_index and clip_track < from_index:
 			clip["track"] = clip_track + 1
 
-		fake_clips[i] = clip
+		clips[i] = clip
 
 func move_track(from_index: int, to_index: int) -> void:
 	_commit_track_state_change("Move Track", func() -> void:
@@ -2559,22 +2558,22 @@ func _duplicate_track_internal(track_index: int) -> void:
 
 	var duplicated_clips: Array[Dictionary] = []
 
-	for i in range(fake_clips.size()):
-		var clip := fake_clips[i]
+	for i in range(clips.size()):
+		var clip := clips[i]
 		if not clip.has("track"):
 			continue
 
 		var clip_track := int(clip["track"])
 		if clip_track > track_index:
 			clip["track"] = clip_track + 1
-			fake_clips[i] = clip
+			clips[i] = clip
 		elif clip_track == track_index:
 			var duplicated_clip := clip.duplicate(true)
 			duplicated_clip["track"] = insert_index
 			duplicated_clips.append(duplicated_clip)
 
 	for duplicated_clip in duplicated_clips:
-		fake_clips.append(duplicated_clip)
+		clips.append(duplicated_clip)
 
 func duplicate_track(track_index: int) -> void:
 	_commit_track_state_change("Duplicate Track", func() -> void:
@@ -2628,56 +2627,6 @@ func set_bpm(value: float) -> void:
 	editor_undo_redo.add_undo_method(self, "_apply_bpm_state_snapshot", before_state)
 	editor_undo_redo.commit_action()
 
-func _create_demo_clips() -> void:
-	if not fake_clips.is_empty():
-		return
-
-	fake_clips = [
-		{
-			"track": 0,
-			"start": 16.0,
-			"length": 12.5,
-			"name": "Kick Loop",
-			"audio_path": ""
-		},
-		{
-			"track": 0,
-			"start": 29.0,
-			"length": 15.2,
-			"name": "Kick Fill",
-			"audio_path": ""
-		},
-		{
-			"track": 1,
-			"start": 4.3,
-			"length": 6.2,
-			"name": "Snare",
-			"audio_path": ""
-		},
-		{
-			"track": 1,
-			"start": 24.0,
-			"length": 8.2,
-			"name": "Snare Alt",
-			"audio_path": ""
-		},
-		{
-			"track": 2,
-			"start": 8.1,
-			"length": 16.2,
-			"name": "Bass Phrase",
-			"audio_path": ""
-		},
-		{
-			"track": 3,
-			"start": 32.9,
-			"length": 20.5,
-			"name": "Melody",
-			"audio_path": ""
-		}
-	]
-
-
 func _update_temporary_snap_override_from_event(event: InputEvent) -> void:
 	if event is InputEventMouseMotion:
 		var mouse_motion_event := event as InputEventMouseMotion
@@ -2697,7 +2646,7 @@ func _draw() -> void:
 	_draw_track_lanes()
 	_draw_track_names()
 	_draw_vertical_grid()
-	_draw_fake_clips()
+	_draw_clips()
 	_draw_bar_numbers()
 	_draw_blocked_action_feedback()
 	_draw_playhead()
@@ -2827,12 +2776,12 @@ func _draw_playhead() -> void:
 		playhead_line_width
 	)
 
-func _draw_fake_clips() -> void:
+func _draw_clips() -> void:
 	var font := get_theme_default_font()
 	var font_size := get_theme_default_font_size()
 
-	for i in range(fake_clips.size()):
-		var clip := fake_clips[i]
+	for i in range(clips.size()):
+		var clip := clips[i]
 
 		if not clip.has("track") or not clip.has("start") or not clip.has("length"):
 			continue

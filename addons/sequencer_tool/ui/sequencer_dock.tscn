@@ -2,6 +2,7 @@
 
 [ext_resource type="Script" uid="uid://bh2w3mks0wd7x" path="res://addons/sequencer_tool/ui/sequencer_dock.gd" id="1_o187q"]
 [ext_resource type="Script" uid="uid://byuox4fv4dpo2" path="res://addons/sequencer_tool/ui/timeline_control.gd" id="2_pn50h"]
+[ext_resource type="Script" uid="uid://b3pdqwdfywcy8" path="res://addons/sequencer_tool/ui/audio_preview_controller.gd" id="3_s45hi"]
 
 [node name="sequencer_dock" type="VBoxContainer" unique_id=1044257266]
 anchors_preset = 15
@@ -401,6 +402,7 @@ file_mode = 0
 filters = PackedStringArray("*.wav, *.ogg, *.mp3 ; Audio Files")
 
 [node name="AudioPreviewController" type="Node" parent="." unique_id=1211400117]
+script = ExtResource("3_s45hi")
 
 [connection signal="pressed" from="ToolBar/ButtonNew" to="." method="_on_button_new_pressed"]
 [connection signal="pressed" from="ToolBar/ButtonOpen" to="." method="_on_button_open_pressed"]
