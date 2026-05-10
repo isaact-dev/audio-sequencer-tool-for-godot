@@ -156,17 +156,20 @@ func set_bars(value: int) -> void:
 
 	var new_total_subdivisions := float(new_bars * beats_per_bar * subdivisions_per_beat)
 	var furthest_clip_end := _get_furthest_clip_end()
-
 	if new_total_subdivisions < furthest_clip_end:
 		_show_blocked_action_feedback("Can't reduce bars below the last clip end.")
 		return
 
-	bars = new_bars
-	_update_timeline_size()
-	_emit_status_text()
-	_emit_selected_clip_changed()
-	_emit_sequence_changed()
-	queue_redraw()
+	if editor_undo_redo == null:
+		_apply_bars_value(new_bars)
+		return
+
+	var previous_bars := bars
+
+	editor_undo_redo.create_action("Change Bars")
+	editor_undo_redo.add_do_method(self, "_apply_bars_value", new_bars)
+	editor_undo_redo.add_undo_method(self, "_apply_bars_value", previous_bars)
+	editor_undo_redo.commit_action()
 
 func _get_track_color(track_index: int) -> Color:
 	if track_color_palette.is_empty():
@@ -294,6 +297,14 @@ func _get_furthest_clip_end() -> float:
 		furthest_end = max(furthest_end, _get_clip_end(clip))
 
 	return furthest_end
+
+func _apply_bars_value(value: int) -> void:
+	bars = max(1, value)
+	_update_timeline_size()
+	_emit_status_text()
+	_emit_selected_clip_changed()
+	_emit_sequence_changed()
+	queue_redraw()
 
 func _get_track_clips_sorted(track_index: int, exclude_clip_index: int = -1, exclude_clip_indices: Array[int] = []) -> Array:
 	var clips_on_track: Array[Dictionary] = []
@@ -933,28 +944,41 @@ func _drop_data(at_position: Vector2, data: Variant) -> void:
 
 	var target_track := _y_to_track_index(at_position.y)
 	var next_start := _snap_timeline_position(_x_to_timeline(at_position.x))
-	var inserted_indices: Array[int] = []
+	var dropped_clips: Array[Dictionary] = []
 
 	for audio_path in audio_paths:
-		var inserted_index := add_clip_at_position(audio_path, target_track, next_start)
-		if inserted_index < 0:
+		var new_clip := _build_clip_data_at_position(audio_path, target_track, next_start)
+		if new_clip.is_empty():
 			continue
 
-		inserted_indices.append(inserted_index)
+		dropped_clips.append(new_clip)
+		next_start = _snap_timeline_position(float(new_clip["start"]) + float(new_clip["length"]))
 
-		var inserted_clip := fake_clips[inserted_index]
-		next_start = _snap_timeline_position(float(inserted_clip["start"]) + float(inserted_clip["length"]))
-
-	if inserted_indices.is_empty():
+	if dropped_clips.is_empty():
 		_show_blocked_action_feedback("No room to add dropped audio on this track.")
 		return
 
-	_set_selected_clip_indices(inserted_indices)
-	_ensure_clip_visible(inserted_indices.back())
-	_emit_sequence_changed()
-	_emit_status_text()
-	_emit_selected_clip_changed()
-	queue_redraw()
+	var insert_start_index := fake_clips.size()
+	var new_selection: Array[int] = []
+	for i in range(dropped_clips.size()):
+		new_selection.append(insert_start_index + i)
+
+	if editor_undo_redo == null:
+		for i in range(dropped_clips.size()):
+			_insert_clip_at(insert_start_index + i, dropped_clips[i])
+		_set_selected_clip_indices(new_selection)
+		_ensure_clip_visible(new_selection.back())
+		return
+
+	editor_undo_redo.create_action("Drop Audio Clips" if dropped_clips.size() > 1 else "Drop Audio Clip")
+	for i in range(dropped_clips.size()):
+		editor_undo_redo.add_do_method(self, "_insert_clip_at", insert_start_index + i, dropped_clips[i])
+	for i in range(dropped_clips.size() - 1, -1, -1):
+		editor_undo_redo.add_undo_method(self, "_remove_clip_at", insert_start_index + i)
+	editor_undo_redo.add_do_method(self, "_set_selected_clip_indices", new_selection)
+	editor_undo_redo.add_undo_method(self, "_clear_selection")
+	editor_undo_redo.commit_action()
+	_ensure_clip_visible(new_selection.back())
 
 func _gui_input(event: InputEvent) -> void:
 	_update_temporary_snap_override_from_event(event)
@@ -1351,10 +1375,15 @@ func _end_clip_drag() -> void:
 			after[clip_index] = fake_clips[clip_index].duplicate(true)
 
 		if editor_undo_redo != null:
+			var dragged_selection := selected_clip_indices.duplicate()
+
 			editor_undo_redo.create_action("Move Clips")
 			for clip_index in before.keys():
 				editor_undo_redo.add_do_method(self, "_set_clip_data", clip_index, after[clip_index])
 				editor_undo_redo.add_undo_method(self, "_set_clip_data", clip_index, before[clip_index])
+
+			editor_undo_redo.add_do_method(self, "_set_selected_clip_indices", dragged_selection)
+			editor_undo_redo.add_undo_method(self, "_set_selected_clip_indices", dragged_selection)
 			editor_undo_redo.commit_action()
 		
 		handled_multiselect_drag = true
@@ -1424,16 +1453,16 @@ func _build_new_clip_defaults(audio_path: String) -> Dictionary:
 		"length": clip_length
 	}
 
-func add_clip_at_position(audio_path: String, track_index: int, desired_start: float) -> int:
+func _build_clip_data_at_position(audio_path: String, track_index: int, desired_start: float) -> Dictionary:
 	if _is_editing_blocked_by_playback():
-		return -1
+		return {}
 
 	var defaults := _build_new_clip_defaults(audio_path)
 	var clip_length := min(float(defaults["length"]), float(_get_total_subdivisions()))
 	var clip_name := str(defaults["name"])
 
 	if clip_length <= 0.0:
-		return -1
+		return {}
 
 	var resolved_track := clamp(track_index, 0, track_count - 1)
 	var resolved_start := _snap_timeline_position(desired_start)
@@ -1441,9 +1470,9 @@ func add_clip_at_position(audio_path: String, track_index: int, desired_start: f
 	if not _can_place_clip_at(resolved_track, -1, clip_length, resolved_start):
 		resolved_start = _find_available_start(resolved_track, clip_length, resolved_start)
 		if resolved_start < 0.0:
-			return -1
+			return {}
 
-	var new_clip := {
+	return {
 		"track": resolved_track,
 		"start": resolved_start,
 		"length": clip_length,
@@ -1453,8 +1482,25 @@ func add_clip_at_position(audio_path: String, track_index: int, desired_start: f
 		"volume": 1.0
 	}
 
-	fake_clips.append(new_clip)
-	return fake_clips.size() - 1
+func add_clip_at_position(audio_path: String, track_index: int, desired_start: float) -> int:
+	var new_clip := _build_clip_data_at_position(audio_path, track_index, desired_start)
+	if new_clip.is_empty():
+		return -1
+
+	var insert_index := fake_clips.size()
+
+	if editor_undo_redo == null:
+		_insert_clip_at(insert_index, new_clip)
+		_ensure_clip_visible(insert_index)
+		return insert_index
+
+	editor_undo_redo.create_action("Add Clip")
+	editor_undo_redo.add_do_method(self, "_insert_clip_at", insert_index, new_clip)
+	editor_undo_redo.add_undo_method(self, "_remove_clip_at", insert_index)
+	editor_undo_redo.commit_action()
+	_ensure_clip_visible(insert_index)
+
+	return insert_index
 
 func add_clip(audio_path: String = "") -> void:
 	if _is_editing_blocked_by_playback():
@@ -1486,38 +1532,23 @@ func add_clip(audio_path: String = "") -> void:
 	elif bool(insertion_context.get("mouse_over_timeline", false)):
 		new_track = clamp(int(insertion_context.get("mouse_track", 0)), 0, track_count - 1)
 
-	var new_start := desired_start
-
-	if not _can_place_clip_at(new_track, -1, default_length, desired_start):
-		new_start = _find_available_start(new_track, default_length, desired_start)
-
-		if new_start < 0.0:
-			_show_blocked_action_feedback("No room to add a clip on this track.")
-			return
-
-	if new_start < 0.0:
+	var new_clip := _build_clip_data_at_position(audio_path, new_track, desired_start)
+	if new_clip.is_empty():
 		_show_blocked_action_feedback("No room to add a clip on this track.")
 		return
 
-	var new_clip := {
-		"track": new_track,
-		"start": new_start,
-		"length": default_length,
-		"name": clip_name,
-		"audio_path": audio_path,
-		"playback_speed": 1.0,
-		"volume": 1.0
-	}
+	var insert_index := fake_clips.size()
 
-	fake_clips.append(new_clip)
-	selected_clip_index = fake_clips.size() - 1
-	selected_clip_indices = [selected_clip_index]
-	_ensure_clip_visible(selected_clip_index)
+	if editor_undo_redo == null:
+		_insert_clip_at(insert_index, new_clip)
+		_ensure_clip_visible(insert_index)
+		return
 
-	_emit_sequence_changed()
-	_emit_status_text()
-	_emit_selected_clip_changed()
-	queue_redraw()
+	editor_undo_redo.create_action("Add Clip")
+	editor_undo_redo.add_do_method(self, "_insert_clip_at", insert_index, new_clip)
+	editor_undo_redo.add_undo_method(self, "_remove_clip_at", insert_index)
+	editor_undo_redo.commit_action()
+	_ensure_clip_visible(insert_index)
 
 func duplicate_selected_clip() -> void:
 	if _is_editing_blocked_by_playback():
@@ -1828,7 +1859,6 @@ func _nudge_selected_clip(amount: float, use_snap: bool) -> void:
 		return
 
 	var clip_indices: Array[int] = []
-
 	for clip_index in selected_clip_indices:
 		if clip_index >= 0 and clip_index < fake_clips.size():
 			clip_indices.append(clip_index)
@@ -1863,6 +1893,7 @@ func _nudge_selected_clip(amount: float, use_snap: bool) -> void:
 			var start: float = clip["start"]
 			var length: float = clip["length"]
 			var desired_start := start + resolved_delta
+
 			var limits := _get_clip_start_limits(
 				track_index,
 				clip_index,
@@ -1880,34 +1911,52 @@ func _nudge_selected_clip(amount: float, use_snap: bool) -> void:
 				float(limits["min_start"]),
 				float(limits["max_start"])
 			)
+
 			if not is_equal_approx(resolved_start, desired_start):
 				_show_blocked_action_feedback("No room to nudge selection.")
 				return
+
+		var before_clips := {}
+		for clip_index in clip_indices:
+			before_clips[clip_index] = fake_clips[clip_index].duplicate(true)
 
 		for clip_index in clip_indices:
 			var clip := fake_clips[clip_index]
 			clip["start"] = float(clip["start"]) + resolved_delta
 			fake_clips[clip_index] = clip
 
+		var after_clips := {}
+		for clip_index in clip_indices:
+			after_clips[clip_index] = fake_clips[clip_index].duplicate(true)
+
 		_emit_sequence_changed()
 		_emit_status_text()
 		_emit_selected_clip_changed()
 		queue_redraw()
+
+		if editor_undo_redo != null:
+			editor_undo_redo.create_action("Nudge Clips")
+			for clip_index in clip_indices:
+				editor_undo_redo.add_do_method(self, "_set_clip_data", clip_index, after_clips[clip_index])
+				editor_undo_redo.add_undo_method(self, "_set_clip_data", clip_index, before_clips[clip_index])
+			editor_undo_redo.add_do_method(self, "_set_selected_clip_indices", clip_indices)
+			editor_undo_redo.add_undo_method(self, "_set_selected_clip_indices", clip_indices)
+			editor_undo_redo.commit_action()
+
 		return
 
 	if selected_clip_index < 0 or selected_clip_index >= fake_clips.size():
 		return
 
 	var clip := fake_clips[selected_clip_index]
-
 	if not clip.has("start") or not clip.has("length") or not clip.has("track"):
 		return
 
 	var track_index: int = clip["track"]
 	var start: float = clip["start"]
 	var length: float = clip["length"]
-
 	var desired_start := start + amount
+
 	if use_snap:
 		desired_start = round(desired_start)
 
@@ -1932,13 +1981,21 @@ func _nudge_selected_clip(amount: float, use_snap: bool) -> void:
 		_show_blocked_action_feedback("No room to nudge clip.")
 		return
 
+	var before_clip := clip.duplicate(true)
 	clip["start"] = new_start
 	fake_clips[selected_clip_index] = clip
+	var after_clip := clip.duplicate(true)
 
 	_emit_sequence_changed()
 	_emit_status_text()
 	_emit_selected_clip_changed()
 	queue_redraw()
+
+	if editor_undo_redo != null:
+		editor_undo_redo.create_action("Nudge Clip")
+		editor_undo_redo.add_do_method(self, "_set_clip_data", selected_clip_index, after_clip)
+		editor_undo_redo.add_undo_method(self, "_set_clip_data", selected_clip_index, before_clip)
+		editor_undo_redo.commit_action()
 
 
 func set_selected_clip_name(value: String) -> void:

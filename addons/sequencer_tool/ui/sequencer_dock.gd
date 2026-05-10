@@ -262,6 +262,12 @@ func _mark_sequence_clean() -> void:
 	has_unsaved_changes = false
 	_update_title_text()
 
+func _apply_sequence_title(value: String) -> void:
+	sequence_title = value
+	_mark_sequence_dirty()
+	_refresh_save_dialog_suggested_file()
+	_update_title_text()
+
 func _request_new_sequence() -> void:
 	new_bars_spin.value = timeline.bars
 	new_beats_spin.value = timeline.beats_per_bar
@@ -742,10 +748,8 @@ func _on_button_save_as_pressed() -> void:
 func _on_title_edit_text_submitted(new_text) -> void:
 	sequence_title_edit.release_focus()
 
-
 func _on_title_edit_focus_exited() -> void:
 	var new_title = sequence_title_edit.text.strip_edges()
-
 	if new_title.is_empty():
 		new_title = "Untitled Sequence"
 
@@ -753,11 +757,16 @@ func _on_title_edit_focus_exited() -> void:
 		_update_title_text()
 		return
 
-	sequence_title = new_title
-	_mark_sequence_dirty()
-	_refresh_save_dialog_suggested_file()
-	_update_title_text()
+	if editor_undo_redo == null:
+		_apply_sequence_title(new_title)
+		return
 
+	var previous_title := sequence_title
+
+	editor_undo_redo.create_action("Rename Sequence")
+	editor_undo_redo.add_do_method(self, "_apply_sequence_title", new_title)
+	editor_undo_redo.add_undo_method(self, "_apply_sequence_title", previous_title)
+	editor_undo_redo.commit_action()
 
 func _on_clip_source_edit_text_submitted(new_text: String) -> void:
 	if _updating_clip_settings_ui:
