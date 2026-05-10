@@ -399,6 +399,51 @@ func get_clip_max_length(clip_index: int) -> float:
 
 	return _get_effective_max_clip_length(clip_index, fake_clips[clip_index])
 
+func _clamp_all_clip_lengths_for_current_tempo() -> bool:
+	var changed := false
+
+	for i in range(fake_clips.size()):
+		var clip := fake_clips[i]
+		if not clip.has("length"):
+			continue
+
+		var current_length := float(clip.get("length", min_clip_length))
+		var max_length := _get_effective_max_clip_length(i, clip)
+		var clamped_length := clamp(current_length, min_clip_length, max_length)
+
+		if is_equal_approx(current_length, clamped_length):
+			continue
+
+		clip["length"] = clamped_length
+		fake_clips[i] = clip
+		changed = true
+
+	return changed
+
+func _build_bpm_state_snapshot() -> Dictionary:
+	var clips_snapshot: Array[Dictionary] = []
+
+	for clip in fake_clips:
+		clips_snapshot.append(clip.duplicate(true))
+
+	return {
+		"bpm": bpm,
+		"clips": clips_snapshot
+	}
+
+func _apply_bpm_state_snapshot(state: Dictionary) -> void:
+	bpm = max(1.0, float(state.get("bpm", bpm)))
+
+	fake_clips.clear()
+	for clip_data in state.get("clips", []):
+		if clip_data is Dictionary:
+			fake_clips.append((clip_data as Dictionary).duplicate(true))
+
+	_emit_sequence_changed()
+	_emit_status_text()
+	_emit_selected_clip_changed()
+	queue_redraw()
+
 func _find_available_start(track_index: int, clip_length: float, preferred_start: float, exclude_clip_index: int = -1) -> float:
 	var total_subdivisions := float(_get_total_subdivisions())
 	var max_start := max(0.0, total_subdivisions - clip_length)
@@ -2490,10 +2535,41 @@ func pause() -> void:
 	is_playing = false
 	queue_redraw()
 
-func set_bpm(value: float) -> void:
-	bpm = max(1.0, value)
+func _set_bpm_internal(value: float) -> void:
+	var new_bpm := max(1.0, value)
+	if is_equal_approx(bpm, new_bpm):
+		return
+
+	bpm = new_bpm
+	var clips_changed := _clamp_all_clip_lengths_for_current_tempo()
+
 	_emit_sequence_changed()
+	_emit_status_text()
+
+	if clips_changed:
+		_emit_selected_clip_changed()
+
 	queue_redraw()
+
+func set_bpm(value: float) -> void:
+	var before_state := _build_bpm_state_snapshot()
+
+	_set_bpm_internal(value)
+
+	var after_state := _build_bpm_state_snapshot()
+	if before_state == after_state:
+		return
+
+	if editor_undo_redo == null:
+		_apply_bpm_state_snapshot(after_state)
+		return
+
+	_apply_bpm_state_snapshot(before_state)
+
+	editor_undo_redo.create_action("Change BPM")
+	editor_undo_redo.add_do_method(self, "_apply_bpm_state_snapshot", after_state)
+	editor_undo_redo.add_undo_method(self, "_apply_bpm_state_snapshot", before_state)
+	editor_undo_redo.commit_action()
 
 func _create_demo_clips() -> void:
 	if not fake_clips.is_empty():

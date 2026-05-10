@@ -701,6 +701,7 @@ func _on_loop_check_box_toggled(toggled_on: bool) -> void:
 
 func _on_timeline_control_sequence_changed() -> void:
 	_mark_sequence_dirty()
+	_sync_timeline_settings_ui()
 
 
 func _on_unsaved_changes_confirm_dialog_confirmed() -> void:
