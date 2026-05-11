@@ -1,10 +1,15 @@
 @tool
 extends Node
 
+@export var preview_player_pool_size: int = 32
+
 var timeline: TimelineControl = null
 var previous_playhead_position: float = 0.0
 var was_playing_last_frame: bool = false
 var _previewed_clip_indices_this_frame: Dictionary = {}
+var _preview_players: Array[AudioStreamPlayer] = []
+var _active_previews: Array[Dictionary] = []
+var _audio_stream_cache: Dictionary = {}
 
 const CLIP_START_TRIGGER_EPSILON := 0.00001
 
@@ -16,8 +21,114 @@ func set_timeline(value: TimelineControl) -> void:
 		was_playing_last_frame = false
 		return
 
+	_ensure_preview_player_pool()
 	previous_playhead_position = float(timeline.playhead_position)
 	was_playing_last_frame = bool(timeline.is_playing)
+
+func _ensure_preview_player_pool() -> void:
+	while _preview_players.size() < preview_player_pool_size:
+		var player := AudioStreamPlayer.new()
+		player.finished.connect(_on_preview_player_finished.bind(player))
+		add_child(player)
+		_preview_players.append(player)
+
+func _get_timeline_subdivisions_per_second() -> float:
+	if timeline == null:
+		return 0.0
+
+	return (float(timeline.bpm) / 60.0) * float(timeline.subdivisions_per_beat)
+
+func _get_clip_preview_duration_seconds(clip: Dictionary) -> float:
+	var subdivisions_per_second := _get_timeline_subdivisions_per_second()
+	if subdivisions_per_second <= 0.0:
+		return 0.0
+
+	var clip_length := max(0.0, float(clip.get("length", 0.0)))
+	return clip_length / subdivisions_per_second
+
+func _resolve_track_preview_bus(_track_index: int) -> String:
+	return "Master"
+
+func _acquire_preview_player(track_index: int) -> AudioStreamPlayer:
+	_ensure_preview_player_pool()
+
+	for player in _preview_players:
+		if not _is_preview_player_active(player):
+			player.bus = _resolve_track_preview_bus(track_index)
+			return player
+
+	if _active_previews.is_empty():
+		return null
+
+	var oldest_preview_index := 0
+	var oldest_end_time := float(_active_previews[0].get("end_time", 0.0))
+
+	for i in range(1, _active_previews.size()):
+		var preview_end_time := float(_active_previews[i].get("end_time", 0.0))
+		if preview_end_time < oldest_end_time:
+			oldest_end_time = preview_end_time
+			oldest_preview_index = i
+
+	var stolen_player := _active_previews[oldest_preview_index].get("player") as AudioStreamPlayer
+	_release_preview_player(stolen_player)
+
+	if stolen_player != null:
+		stolen_player.bus = _resolve_track_preview_bus(track_index)
+
+	return stolen_player
+
+func _is_preview_player_active(player: AudioStreamPlayer) -> bool:
+	for preview in _active_previews:
+		if preview.get("player") == player:
+			return true
+	return false
+
+func _release_preview_player(player: AudioStreamPlayer) -> void:
+	if player == null or not is_instance_valid(player):
+		return
+
+	player.stop()
+	player.stream = null
+
+	for i in range(_active_previews.size() - 1, -1, -1):
+		if _active_previews[i].get("player") == player:
+			_active_previews.remove_at(i)
+
+func _update_active_previews() -> void:
+	var now_seconds := Time.get_ticks_usec() / 1000000.0
+
+	for i in range(_active_previews.size() - 1, -1, -1):
+		var preview := _active_previews[i]
+		var player := preview.get("player") as AudioStreamPlayer
+		var end_time := float(preview.get("end_time", 0.0))
+
+		if player == null or not is_instance_valid(player):
+			_active_previews.remove_at(i)
+			continue
+
+		if now_seconds >= end_time:
+			_release_preview_player(player)
+
+func _get_cached_audio_stream(audio_path: String) -> AudioStream:
+	var resolved_path := audio_path.strip_edges()
+	if resolved_path.is_empty():
+		return null
+
+	if _audio_stream_cache.has(resolved_path):
+		var cached_stream := _audio_stream_cache[resolved_path] as AudioStream
+		if cached_stream != null:
+			return cached_stream
+		_audio_stream_cache.erase(resolved_path)
+
+	var loaded_stream := load(resolved_path) as AudioStream
+	if loaded_stream == null:
+		return null
+
+	_audio_stream_cache[resolved_path] = loaded_stream
+	return loaded_stream
+
+func clear_audio_stream_cache() -> void:
+	_audio_stream_cache.clear()
 
 func _process(_delta: float) -> void:
 	if timeline == null:
@@ -27,14 +138,11 @@ func _process(_delta: float) -> void:
 	var current_playhead_position := float(timeline.playhead_position)
 
 	_previewed_clip_indices_this_frame.clear()
+	_update_active_previews()
 
 	if not is_playing_now:
 		previous_playhead_position = current_playhead_position
 		was_playing_last_frame = false
-		return
-
-		previous_playhead_position = current_playhead_position
-		was_playing_last_frame = true
 		return
 
 	_trigger_crossed_clip_starts(previous_playhead_position, current_playhead_position)
@@ -47,22 +155,24 @@ func _trigger_crossed_clip_starts(previous_position: float, current_position: fl
 		timeline.bars * timeline.beats_per_bar * timeline.subdivisions_per_beat
 	)
 
+	var include_start := previous_position <= CLIP_START_TRIGGER_EPSILON
+
 	if current_position >= previous_position:
-		_trigger_clip_starts_in_range(previous_position, current_position)
+		_trigger_clip_starts_in_range(previous_position, current_position, include_start)
 	else:
 		_trigger_clip_starts_in_range(previous_position, total_subdivisions)
+		_trigger_clip_starts_in_range(0.0, current_position, true)
 
 func _trigger_clip_starts_in_range(start_position: float, end_position: float, include_start: bool = false) -> void:
 	for clip_index in range(timeline.clips.size()):
 		var clip := timeline.clips[clip_index]
 		var clip_start := float(clip.get("start", -1.0))
-		var trigger_position := clip_start + CLIP_START_TRIGGER_EPSILON
 
 		if include_start:
-			if trigger_position < start_position or trigger_position > end_position:
+			if clip_start < start_position - CLIP_START_TRIGGER_EPSILON or clip_start > end_position + CLIP_START_TRIGGER_EPSILON:
 				continue
 		else:
-			if trigger_position <= start_position or trigger_position > end_position:
+			if clip_start <= start_position + CLIP_START_TRIGGER_EPSILON or clip_start > end_position + CLIP_START_TRIGGER_EPSILON:
 				continue
 
 		if _previewed_clip_indices_this_frame.has(clip_index):
@@ -76,7 +186,7 @@ func _preview_clip(clip: Dictionary) -> void:
 	if audio_path.is_empty():
 		return
 
-	var audio_stream := load(audio_path) as AudioStream
+	var audio_stream := _get_cached_audio_stream(audio_path)
 	if audio_stream == null:
 		return
 
@@ -94,15 +204,23 @@ func _preview_clip(clip: Dictionary) -> void:
 	if final_volume <= 0.0:
 		return
 
-	var player := AudioStreamPlayer.new()
+	var preview_duration_seconds := _get_clip_preview_duration_seconds(clip)
+	if preview_duration_seconds <= 0.0:
+		return
+
+	var player := _acquire_preview_player(track_index)
+	if player == null:
+		return
+
 	player.stream = audio_stream
 	player.pitch_scale = max(0.001, float(clip.get("playback_speed", 1.0)))
 	player.volume_db = linear_to_db(max(0.0001, final_volume))
-	player.finished.connect(_on_preview_player_finished.bind(player))
-
-	add_child(player)
 	player.play()
 
+	_active_previews.append({
+		"player": player,
+		"end_time": (Time.get_ticks_usec() / 1000000.0) + preview_duration_seconds
+	})
+
 func _on_preview_player_finished(player: AudioStreamPlayer) -> void:
-	if player != null and is_instance_valid(player):
-		player.queue_free()
+	_release_preview_player(player)

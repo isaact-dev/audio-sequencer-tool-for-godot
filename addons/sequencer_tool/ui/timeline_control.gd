@@ -1001,13 +1001,13 @@ func _gui_input(event: InputEvent) -> void:
 				accept_event()
 				return
 			if key_event.ctrl_pressed and key_event.keycode == KEY_D:
-					duplicate_selected_clip()
-					accept_event()
-					return
+				duplicate_selected_clip()
+				accept_event()
+				return
 			if key_event.ctrl_pressed and key_event.keycode == KEY_A:
-					add_clip_requested.emit()
-					accept_event()
-					return
+				add_clip_requested.emit()
+				accept_event()
+				return
 			if key_event.keycode == KEY_SPACE:
 				is_playing = !is_playing
 		if key_event.pressed:

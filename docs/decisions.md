@@ -323,6 +323,7 @@ The internal function stays focused on the actual track data change while the pu
 ## 2026-05-10 — Clip start preview triggering should use a very small positive epsilon offset
 
 ### Decision
+
 Clip start preview triggering should use a very small positive epsilon offset instead of relying on exact start-boundary equality.
 The preview trigger point is treated as:
 
@@ -333,5 +334,19 @@ A small epsilon should be used specifically to protect clip starts at timeline z
 ## 2026-05-10 — Audio preview triggering should support per-frame deduping
 
 ### Decision
+
 Audio preview triggering should support per-frame deduping so the same clip cannot be previewed more than once in a single frame.
 This deduping should be applied inside the audio preview runtime logic.
+
+## 2026-05-11 — Track-based audio preview should be designed around audio bus routing
+
+### Decision
+
+Track-based audio preview should be designed around audio bus routing.
+Preview players should not hardcode all playback directly to a single final output path.
+Instead, the audio preview runtime should be able to resolve playback through track-specific bus routing later.
+
+### Reasoning
+
+Track effects and track-level audio processing are easier to support cleanly if playback is routed through buses instead of being treated as one flat output stream.
+This keeps playback concerns in the audio preview runtime layer and avoids mixing runtime audio processing logic into timeline authoring code.

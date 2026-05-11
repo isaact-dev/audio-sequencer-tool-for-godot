@@ -82,7 +82,7 @@ func _ready() -> void:
 	if editor_undo_redo != null:
 		timeline.set_editor_undo_redo(editor_undo_redo)
 	if audio_preview_controller != null:
-			audio_preview_controller.set_timeline(timeline)
+		audio_preview_controller.set_timeline(timeline)
 
 	status_label.text = timeline._build_status_text()
 
@@ -204,7 +204,7 @@ func _sync_clip_settings_ui(clip_index: int, clip_data: Dictionary) -> void:
 		if length_spin.value != clip_length:
 			length_spin.value = clip_length
 		if playback_speed_spin.value != clip_playback_speed:
-					playback_speed_spin.value = clip_playback_speed
+			playback_speed_spin.value = clip_playback_speed
 		if volume_spin.value != clip_volume:
 			volume_spin.value = clip_volume
 	_updating_clip_settings_ui = false
