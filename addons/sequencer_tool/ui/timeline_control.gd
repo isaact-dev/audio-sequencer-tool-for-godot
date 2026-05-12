@@ -1998,6 +1998,8 @@ func _nudge_selected_clip(amount: float, use_snap: bool) -> void:
 
 
 func set_selected_clip_name(value: String) -> void:
+	if _is_editing_blocked_by_playback():
+		return
 	if selected_clip_index < 0 or selected_clip_index >= clips.size():
 		return
 
@@ -2078,6 +2080,8 @@ func _set_clip_data(clip_index: int, clip_data: Dictionary) -> void:
 	queue_redraw()
 
 func set_selected_clip_audio_path(value: String) -> void:
+	if _is_editing_blocked_by_playback():
+		return
 	if selected_clip_index < 0 or selected_clip_index >= clips.size():
 		return
 
@@ -2435,6 +2439,9 @@ func _add_track_internal() -> void:
 	track_volumes.append(1.0)
 
 func add_track() -> void:
+	if _is_editing_blocked_by_playback():
+		return
+
 	_commit_track_state_change("Add Track", func() -> void:
 		_add_track_internal()
 	)
@@ -2476,6 +2483,8 @@ func _remove_track_internal(track_index: int) -> void:
 
 
 func remove_track(track_index: int) -> void:
+	if _is_editing_blocked_by_playback():
+		return
 	_commit_track_state_change("Delete Track", func() -> void:
 		_remove_track_internal(track_index)
 	)
@@ -2491,6 +2500,8 @@ func _rename_track_internal(track_index: int, value: String) -> void:
 	track_names[track_index] = resolved_name
 
 func rename_track(track_index: int, value: String) -> void:
+	if _is_editing_blocked_by_playback():
+		return
 	_commit_track_state_change("Rename Track", func() -> void:
 		_rename_track_internal(track_index, value)
 	)
@@ -2531,6 +2542,8 @@ func _move_track_internal(from_index: int, to_index: int) -> void:
 		clips[i] = clip
 
 func move_track(from_index: int, to_index: int) -> void:
+	if _is_editing_blocked_by_playback():
+		return
 	_commit_track_state_change("Move Track", func() -> void:
 		_move_track_internal(from_index, to_index)
 	)
@@ -2576,6 +2589,8 @@ func _duplicate_track_internal(track_index: int) -> void:
 		clips.append(duplicated_clip)
 
 func duplicate_track(track_index: int) -> void:
+	if _is_editing_blocked_by_playback():
+		return
 	_commit_track_state_change("Duplicate Track", func() -> void:
 		_duplicate_track_internal(track_index)
 	)

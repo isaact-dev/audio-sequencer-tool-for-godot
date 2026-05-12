@@ -152,8 +152,7 @@ value = 1.0
 
 [node name="ClipVolumeLabel" type="Label" parent="HSplitContainer/SettingsHost/ClipSettings" unique_id=761708702]
 layout_mode = 2
-text = "Volume
-"
+text = "Volume"
 
 [node name="ClipVolumeSpin" type="SpinBox" parent="HSplitContainer/SettingsHost/ClipSettings" unique_id=551096608]
 layout_mode = 2

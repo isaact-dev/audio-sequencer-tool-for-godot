@@ -49,7 +49,7 @@ func _get_clip_preview_duration_seconds(clip: Dictionary) -> float:
 func _resolve_track_preview_bus(_track_index: int) -> String:
 	return "Master"
 
-func _get_preview_linear_volume(track_index: int, clip_volume: float) -> float:
+func _get_preview_linear_volume(track_index: int, clip_index: int, fallback_clip_volume: float) -> float:
 	if timeline == null:
 		return 0.0
 
@@ -58,6 +58,11 @@ func _get_preview_linear_volume(track_index: int, clip_volume: float) -> float:
 
 	if timeline.get_track_muted(track_index):
 		return 0.0
+
+	var clip_volume := fallback_clip_volume
+	if clip_index >= 0 and clip_index < timeline.clips.size():
+		var clip := timeline.clips[clip_index]
+		clip_volume = max(0.0, float(clip.get("volume", fallback_clip_volume)))
 
 	var track_volume := max(0.0, float(timeline.get_track_volume(track_index)))
 	return track_volume * max(0.0, clip_volume)
@@ -133,6 +138,7 @@ func _update_active_previews() -> void:
 		var player := preview.get("player") as AudioStreamPlayer
 		var end_time := float(preview.get("end_time", 0.0))
 		var track_index := int(preview.get("track_index", -1))
+		var clip_index := int(preview.get("clip_index", -1))
 		var clip_volume := float(preview.get("clip_volume", 1.0))
 
 		if player == null or not is_instance_valid(player):
@@ -143,7 +149,7 @@ func _update_active_previews() -> void:
 			_release_preview_player(player)
 			continue
 
-		var final_volume := _get_preview_linear_volume(track_index, clip_volume)
+		var final_volume := _get_preview_linear_volume(track_index, clip_index, clip_volume)
 		if final_volume <= 0.0:
 			_release_preview_player(player)
 			continue
@@ -223,9 +229,9 @@ func _trigger_clip_starts_in_range(start_position: float, end_position: float, i
 			continue
 
 		_previewed_clip_indices_this_frame[clip_index] = true
-		_preview_clip(clip)
+		_preview_clip(clip_index, clip)
 
-func _preview_clip(clip: Dictionary) -> void:
+func _preview_clip(clip_index: int, clip: Dictionary) -> void:
 	var audio_path := str(clip.get("audio_path", "")).strip_edges()
 	if audio_path.is_empty():
 		return
@@ -242,7 +248,7 @@ func _preview_clip(clip: Dictionary) -> void:
 		return
 
 	var clip_volume := max(0.0, float(clip.get("volume", 1.0)))
-	var final_volume := _get_preview_linear_volume(track_index, clip_volume)
+	var final_volume := _get_preview_linear_volume(track_index, clip_index, clip_volume)
 	if final_volume <= 0.0:
 		return
 
@@ -263,6 +269,7 @@ func _preview_clip(clip: Dictionary) -> void:
 		"player": player,
 		"end_time": (Time.get_ticks_usec() / 1000000.0) + preview_duration_seconds,
 		"track_index": track_index,
+		"clip_index": clip_index,
 		"clip_volume": clip_volume
 	})
 
