@@ -49,6 +49,19 @@ func _get_clip_preview_duration_seconds(clip: Dictionary) -> float:
 func _resolve_track_preview_bus(_track_index: int) -> String:
 	return "Master"
 
+func _get_preview_linear_volume(track_index: int, clip_volume: float) -> float:
+	if timeline == null:
+		return 0.0
+
+	if track_index < 0 or track_index >= timeline.track_count:
+		return 0.0
+
+	if timeline.get_track_muted(track_index):
+		return 0.0
+
+	var track_volume := max(0.0, float(timeline.get_track_volume(track_index)))
+	return track_volume * max(0.0, clip_volume)
+
 func _acquire_preview_player(track_index: int) -> AudioStreamPlayer:
 	_ensure_preview_player_pool()
 
@@ -94,6 +107,24 @@ func _release_preview_player(player: AudioStreamPlayer) -> void:
 		if _active_previews[i].get("player") == player:
 			_active_previews.remove_at(i)
 
+func stop_all_audio() -> void:
+	for preview in _active_previews:
+		var player := preview.get("player") as AudioStreamPlayer
+		if player == null or not is_instance_valid(player):
+			continue
+
+		player.stop()
+		player.stream = null
+
+	_active_previews.clear()
+
+	for player in _preview_players:
+		if player == null or not is_instance_valid(player):
+			continue
+
+		player.stop()
+		player.stream = null
+
 func _update_active_previews() -> void:
 	var now_seconds := Time.get_ticks_usec() / 1000000.0
 
@@ -101,6 +132,8 @@ func _update_active_previews() -> void:
 		var preview := _active_previews[i]
 		var player := preview.get("player") as AudioStreamPlayer
 		var end_time := float(preview.get("end_time", 0.0))
+		var track_index := int(preview.get("track_index", -1))
+		var clip_volume := float(preview.get("clip_volume", 1.0))
 
 		if player == null or not is_instance_valid(player):
 			_active_previews.remove_at(i)
@@ -108,6 +141,14 @@ func _update_active_previews() -> void:
 
 		if now_seconds >= end_time:
 			_release_preview_player(player)
+			continue
+
+		var final_volume := _get_preview_linear_volume(track_index, clip_volume)
+		if final_volume <= 0.0:
+			_release_preview_player(player)
+			continue
+
+		player.volume_db = linear_to_db(max(0.0001, final_volume))
 
 func _get_cached_audio_stream(audio_path: String) -> AudioStream:
 	var resolved_path := audio_path.strip_edges()
@@ -141,6 +182,9 @@ func _process(_delta: float) -> void:
 	_update_active_previews()
 
 	if not is_playing_now:
+		if was_playing_last_frame:
+			stop_all_audio()
+
 		previous_playhead_position = current_playhead_position
 		was_playing_last_frame = false
 		return
@@ -197,10 +241,8 @@ func _preview_clip(clip: Dictionary) -> void:
 	if timeline.get_track_muted(track_index):
 		return
 
-	var track_volume := max(0.0, float(timeline.get_track_volume(track_index)))
 	var clip_volume := max(0.0, float(clip.get("volume", 1.0)))
-	var final_volume = track_volume * clip_volume
-
+	var final_volume := _get_preview_linear_volume(track_index, clip_volume)
 	if final_volume <= 0.0:
 		return
 
@@ -219,7 +261,9 @@ func _preview_clip(clip: Dictionary) -> void:
 
 	_active_previews.append({
 		"player": player,
-		"end_time": (Time.get_ticks_usec() / 1000000.0) + preview_duration_seconds
+		"end_time": (Time.get_ticks_usec() / 1000000.0) + preview_duration_seconds,
+		"track_index": track_index,
+		"clip_volume": clip_volume
 	})
 
 func _on_preview_player_finished(player: AudioStreamPlayer) -> void:
