@@ -110,6 +110,7 @@ signal selected_clip_changed(clip_index: int, clip_data: Dictionary)
 signal tracks_changed(track_names: Array)
 signal sequence_changed()
 signal add_clip_requested()
+signal playback_state_changed(is_playing: bool)
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
@@ -604,7 +605,7 @@ func _update_playhead_from_mouse_x(mouse_x: float) -> void:
 func _begin_playhead_scrub(mouse_x: float) -> void:
 	is_scrubbing_playhead = true
 	was_playing_before_scrub = is_playing
-	is_playing = false
+	_set_playing(false)
 	_update_playhead_from_mouse_x(mouse_x)
 
 func _end_playhead_scrub() -> void:
@@ -614,7 +615,7 @@ func _end_playhead_scrub() -> void:
 	is_scrubbing_playhead = false
 
 	if was_playing_before_scrub:
-		is_playing = true
+		_set_playing(true)
 
 	was_playing_before_scrub = false
 	queue_redraw()
@@ -903,7 +904,7 @@ func load_sequence_data(data: Dictionary) -> void:
 	_reset_selection_and_interaction_state()
 	_update_timeline_size()
 
-	is_playing = false
+	_set_playing(false)
 	playhead_position = 0.0
 
 	_emit_status_text()
@@ -1009,7 +1010,12 @@ func _gui_input(event: InputEvent) -> void:
 				accept_event()
 				return
 			if key_event.keycode == KEY_SPACE:
-				is_playing = !is_playing
+				if is_playing:
+					pause()
+				else:
+					play()
+				accept_event()
+				return
 		if key_event.pressed:
 			if key_event.keycode == KEY_LEFT:
 				if key_event.shift_pressed:
@@ -1145,7 +1151,7 @@ func _process(delta: float) -> void:
 			playhead_position = 0.0
 
 			if not loop_enabled:
-				is_playing = false
+				_set_playing(false)
 
 		_ensure_playhead_visible_during_playback()
 		queue_redraw()
@@ -2598,13 +2604,18 @@ func duplicate_track(track_index: int) -> void:
 func _get_subdivisions_per_second() -> float:
 	return (bpm / 60.0) * float(subdivisions_per_beat)
 
-func play() -> void:
-	is_playing = true
+func _set_playing(value: bool) -> void:
+	if is_playing == value:
+		return
+	is_playing = value
+	playback_state_changed.emit(is_playing)
 	queue_redraw()
 
+func play() -> void:
+	_set_playing(true)
+
 func pause() -> void:
-	is_playing = false
-	queue_redraw()
+	_set_playing(false)
 
 func _set_bpm_internal(value: float) -> void:
 	var new_bpm := max(1.0, value)

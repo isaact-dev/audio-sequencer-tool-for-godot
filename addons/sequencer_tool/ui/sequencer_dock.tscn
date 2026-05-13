@@ -434,6 +434,7 @@ script = ExtResource("3_s45hi")
 [connection signal="pressed" from="HSplitContainer/SettingsHost/TimelineSettings/Tracks/TrackToolbar/TrackMoveUpButton" to="." method="_on_track_move_up_button_pressed"]
 [connection signal="mouse_exited" from="HSplitContainer/TimelineBox/TimelinePanel" to="HSplitContainer/TimelineBox/TimelinePanel/ScrollContainer/TimelineControl" method="_on_timeline_panel_mouse_exited"]
 [connection signal="add_clip_requested" from="HSplitContainer/TimelineBox/TimelinePanel/ScrollContainer/TimelineControl" to="." method="_on_timeline_control_add_clip_requested"]
+[connection signal="playback_state_changed" from="HSplitContainer/TimelineBox/TimelinePanel/ScrollContainer/TimelineControl" to="." method="_on_timeline_control_playback_state_changed"]
 [connection signal="selected_clip_changed" from="HSplitContainer/TimelineBox/TimelinePanel/ScrollContainer/TimelineControl" to="." method="_on_timeline_control_selected_clip_changed"]
 [connection signal="sequence_changed" from="HSplitContainer/TimelineBox/TimelinePanel/ScrollContainer/TimelineControl" to="." method="_on_timeline_control_sequence_changed"]
 [connection signal="status_text_changed" from="HSplitContainer/TimelineBox/TimelinePanel/ScrollContainer/TimelineControl" to="." method="_on_timeline_control_status_text_changed"]

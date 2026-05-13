@@ -26,6 +26,7 @@ extends VBoxContainer
 @onready var mute_legend = $HSplitContainer/SettingsHost/TimelineSettings/Tracks/TrackHeader/MuteLegend
 @onready var volume_legend = $HSplitContainer/SettingsHost/TimelineSettings/Tracks/TrackHeader/VolumeLegend
 @onready var delete_clip_button = $ToolBar/ButtonDeleteClip
+@onready var add_clip_button = $ToolBar/ButtonAddClip
 @onready var new_sequence_dialog = $NewSequenceDialog
 @onready var new_bars_spin = $NewSequenceDialog/MarginContainer/VBoxContainer/NewBarsSpin
 @onready var new_beats_spin = $NewSequenceDialog/MarginContainer/VBoxContainer/NewBeatsSpin
@@ -142,7 +143,7 @@ func _ready() -> void:
 	_apply_track_header_layout()
 
 	_update_title_text()
-	
+	_refresh_playback_locked_ui()
 	unsaved_changes_confirm_dialog.add_button("Don't save",true,"DSAVE")
 
 func set_editor_undo_redo(value: EditorUndoRedoManager) -> void:
@@ -218,6 +219,24 @@ func _sync_timeline_settings_ui() -> void:
 
 	if loop_check_box.button_pressed != timeline.loop_enabled:
 		loop_check_box.button_pressed = timeline.loop_enabled
+
+func _refresh_playback_locked_ui() -> void:
+	var playback_locked = timeline != null and timeline.is_playing
+
+	add_clip_button.disabled = playback_locked
+	delete_clip_button.disabled = playback_locked or timeline.selected_clip_indices.is_empty()
+
+	name_edit.editable = not playback_locked
+	source_edit.editable = not playback_locked
+	source_pick_button.disabled = playback_locked
+	playback_speed_spin.editable = not playback_locked
+	track_spin.editable = not playback_locked
+	start_spin.editable = not playback_locked
+	length_spin.editable = not playback_locked
+
+	volume_spin.editable = true
+
+	_refresh_track_toolbar_buttons()
 
 func _update_title_text() -> void:
 	title_label.text = "Audio Sequencer * - "+str(sequence_title) if has_unsaved_changes else "Audio Sequencer - "+str(sequence_title)
@@ -400,6 +419,7 @@ func _refresh_tracks_list(track_names: Array) -> void:
 		row_name_edit.custom_minimum_size = Vector2(52, 0)
 		row_name_edit.text = str(track_names[i])
 		row_name_edit.placeholder_text = "Track %d" % [i + 1]
+		row_name_edit.editable = not timeline.is_playing
 		row_name_edit.text_submitted.connect(_on_track_name_submitted.bind(i, row_name_edit))
 		row_name_edit.focus_exited.connect(_on_track_name_focus_exited.bind(i, row_name_edit))
 		row_name_edit.focus_entered.connect(_on_track_row_focus_entered.bind(i))
@@ -450,11 +470,14 @@ func _refresh_tracks_list_height() -> void:
 	tracks_list.custom_minimum_size.y = 0
 
 func _refresh_track_toolbar_buttons() -> void:
+	var playback_locked = timeline != null and timeline.is_playing
 	var has_selection = selected_track_index >= 0 and selected_track_index < timeline.track_count
-	track_delete_button.disabled = not has_selection or timeline.track_count <= 1
-	track_duplicate_button.disabled = not has_selection
-	track_move_up_button.disabled = not has_selection or selected_track_index <= 0
-	track_move_down_button.disabled = not has_selection or selected_track_index >= timeline.track_count - 1
+
+	track_add_button.disabled = playback_locked
+	track_delete_button.disabled = playback_locked or not has_selection or timeline.track_count <= 1
+	track_duplicate_button.disabled = playback_locked or not has_selection
+	track_move_up_button.disabled = playback_locked or not has_selection or selected_track_index <= 0
+	track_move_down_button.disabled = playback_locked or not has_selection or selected_track_index >= timeline.track_count - 1
 
 func _apply_track_header_layout() -> void:
 	track_header.add_theme_constant_override("separation", TRACK_ROW_SEPARATION)
@@ -653,6 +676,7 @@ func _on_timeline_control_selected_clip_changed(clip_index: int, clip_data: Dict
 	_sync_clip_settings_ui(clip_index, clip_data)
 	timeline_settings.visible = false
 	clip_settings.visible = true
+	_refresh_playback_locked_ui()
 
 func _on_clip_name_edit_text_submitted(new_text: String) -> void:
 	if _updating_clip_settings_ui:
@@ -940,3 +964,8 @@ func _on_clip_volume_spin_value_changed(value: float) -> void:
 	if _updating_clip_settings_ui:
 		return
 	timeline.set_selected_clip_volume(value)
+
+
+func _on_timeline_control_playback_state_changed(_is_playing: bool) -> void:
+	_refresh_playback_locked_ui()
+	_refresh_tracks_list(timeline.get_track_names())
