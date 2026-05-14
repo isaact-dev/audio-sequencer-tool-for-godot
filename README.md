@@ -1,4 +1,4 @@
-# Godot Audio Sequencer Tool
+# # Audio Sequencer Tool for Godot
 
 A standalone Godot editor plugin project for building a reusable sequencer tool.
 
