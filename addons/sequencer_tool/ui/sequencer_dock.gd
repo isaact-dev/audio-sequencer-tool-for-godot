@@ -886,6 +886,14 @@ func _on_track_row_control_pressed(track_index: int) -> void:
 	_set_selected_track_index(track_index)
 
 func _on_track_drag_strip_gui_input(event: InputEvent, track_index: int) -> void:
+	if timeline != null and timeline.is_playing:
+		pending_drag_track_index = -1
+		dragged_track_index = -1
+		drag_hover_track_index = -1
+		drag_insert_after = false
+		is_dragging_track_row = false
+		_refresh_track_row_selection_styles()
+		return
 	if event is InputEventMouseButton:
 		var mouse_button_event := event as InputEventMouseButton
 

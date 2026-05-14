@@ -1006,6 +1006,9 @@ func _gui_input(event: InputEvent) -> void:
 				accept_event()
 				return
 			if key_event.ctrl_pressed and key_event.keycode == KEY_A:
+				if _is_editing_blocked_by_playback(true):
+					accept_event()
+					return
 				add_clip_requested.emit()
 				accept_event()
 				return
@@ -1171,8 +1174,14 @@ func _process(delta: float) -> void:
 		_update_clip_drag(mouse_position)
 
 
-func _is_editing_blocked_by_playback() -> bool:
-	return is_playing
+func _is_editing_blocked_by_playback(show_feedback: bool = false) -> bool:
+	if not is_playing:
+		return false
+
+	if show_feedback:
+		_show_blocked_action_feedback("Pause playback before editing.")
+
+	return true
 
 func _is_in_timeline_header(position: Vector2) -> bool:
 	return position.y >= 0.0 and position.y <= header_height and position.x >= track_label_width
@@ -1459,7 +1468,7 @@ func _build_new_clip_defaults(audio_path: String) -> Dictionary:
 	}
 
 func _build_clip_data_at_position(audio_path: String, track_index: int, desired_start: float) -> Dictionary:
-	if _is_editing_blocked_by_playback():
+	if _is_editing_blocked_by_playback(true):
 		return {}
 
 	var defaults := _build_new_clip_defaults(audio_path)
@@ -1508,7 +1517,7 @@ func add_clip_at_position(audio_path: String, track_index: int, desired_start: f
 	return insert_index
 
 func add_clip(audio_path: String = "") -> void:
-	if _is_editing_blocked_by_playback():
+	if _is_editing_blocked_by_playback(true):
 		return
 
 	var defaults := _build_new_clip_defaults(audio_path)
@@ -1556,7 +1565,7 @@ func add_clip(audio_path: String = "") -> void:
 	_ensure_clip_visible(insert_index)
 
 func duplicate_selected_clip() -> void:
-	if _is_editing_blocked_by_playback():
+	if _is_editing_blocked_by_playback(true):
 		return
 	var source_indices: Array[int] = []
 	for clip_index in selected_clip_indices:
@@ -1724,7 +1733,7 @@ func cut_selected_clips() -> void:
 	delete_selected_clip()
 
 func paste_clipboard() -> void:
-	if _is_editing_blocked_by_playback():
+	if _is_editing_blocked_by_playback(true):
 		return
 
 	if clip_clipboard.is_empty():
@@ -1831,7 +1840,7 @@ func paste_clipboard() -> void:
 	_ensure_clip_visible(new_selection.back())
 
 func delete_selected_clip() -> void:
-	if _is_editing_blocked_by_playback():
+	if _is_editing_blocked_by_playback(true):
 		return
 
 	var clip_indices: Array[int] = []
@@ -1860,7 +1869,7 @@ func delete_selected_clip() -> void:
 
 
 func _nudge_selected_clip(amount: float, use_snap: bool) -> void:
-	if _is_editing_blocked_by_playback():
+	if _is_editing_blocked_by_playback(true):
 		return
 
 	var clip_indices: Array[int] = []
@@ -2004,7 +2013,7 @@ func _nudge_selected_clip(amount: float, use_snap: bool) -> void:
 
 
 func set_selected_clip_name(value: String) -> void:
-	if _is_editing_blocked_by_playback():
+	if _is_editing_blocked_by_playback(true):
 		return
 	if selected_clip_index < 0 or selected_clip_index >= clips.size():
 		return
@@ -2014,7 +2023,7 @@ func set_selected_clip_name(value: String) -> void:
 	_commit_selected_clip_change("Rename Clip", clip)
 
 func set_selected_clip_track(value: int) -> void:
-	if _is_editing_blocked_by_playback():
+	if _is_editing_blocked_by_playback(true):
 		return
 
 	if selected_clip_index < 0 or selected_clip_index >= clips.size():
@@ -2034,7 +2043,7 @@ func set_selected_clip_track(value: int) -> void:
 	_commit_selected_clip_change("Change Clip Track", clip)
 
 func set_selected_clip_start(value: float) -> void:
-	if _is_editing_blocked_by_playback():
+	if _is_editing_blocked_by_playback(true):
 		return
 
 	if selected_clip_index < 0 or selected_clip_index >= clips.size():
@@ -2056,7 +2065,7 @@ func set_selected_clip_start(value: float) -> void:
 	_commit_selected_clip_change("Change Clip Start", clip)
 
 func set_selected_clip_length(value: float) -> void:
-	if _is_editing_blocked_by_playback():
+	if _is_editing_blocked_by_playback(true):
 		return
 
 	if selected_clip_index < 0 or selected_clip_index >= clips.size():
@@ -2086,7 +2095,7 @@ func _set_clip_data(clip_index: int, clip_data: Dictionary) -> void:
 	queue_redraw()
 
 func set_selected_clip_audio_path(value: String) -> void:
-	if _is_editing_blocked_by_playback():
+	if _is_editing_blocked_by_playback(true):
 		return
 	if selected_clip_index < 0 or selected_clip_index >= clips.size():
 		return
@@ -2102,7 +2111,7 @@ func set_selected_clip_audio_path(value: String) -> void:
 	_commit_selected_clip_change("Set Clip Audio Source", clip)
 
 func set_selected_clip_playback_speed(value: float) -> void:
-	if _is_editing_blocked_by_playback():
+	if _is_editing_blocked_by_playback(true):
 		return
 	if selected_clip_index < 0 or selected_clip_index >= clips.size():
 		return
@@ -2445,7 +2454,7 @@ func _add_track_internal() -> void:
 	track_volumes.append(1.0)
 
 func add_track() -> void:
-	if _is_editing_blocked_by_playback():
+	if _is_editing_blocked_by_playback(true):
 		return
 
 	_commit_track_state_change("Add Track", func() -> void:
@@ -2489,7 +2498,7 @@ func _remove_track_internal(track_index: int) -> void:
 
 
 func remove_track(track_index: int) -> void:
-	if _is_editing_blocked_by_playback():
+	if _is_editing_blocked_by_playback(true):
 		return
 	_commit_track_state_change("Delete Track", func() -> void:
 		_remove_track_internal(track_index)
@@ -2506,7 +2515,7 @@ func _rename_track_internal(track_index: int, value: String) -> void:
 	track_names[track_index] = resolved_name
 
 func rename_track(track_index: int, value: String) -> void:
-	if _is_editing_blocked_by_playback():
+	if _is_editing_blocked_by_playback(true):
 		return
 	_commit_track_state_change("Rename Track", func() -> void:
 		_rename_track_internal(track_index, value)
@@ -2548,7 +2557,7 @@ func _move_track_internal(from_index: int, to_index: int) -> void:
 		clips[i] = clip
 
 func move_track(from_index: int, to_index: int) -> void:
-	if _is_editing_blocked_by_playback():
+	if _is_editing_blocked_by_playback(true):
 		return
 	_commit_track_state_change("Move Track", func() -> void:
 		_move_track_internal(from_index, to_index)
@@ -2595,7 +2604,7 @@ func _duplicate_track_internal(track_index: int) -> void:
 		clips.append(duplicated_clip)
 
 func duplicate_track(track_index: int) -> void:
-	if _is_editing_blocked_by_playback():
+	if _is_editing_blocked_by_playback(true):
 		return
 	_commit_track_state_change("Duplicate Track", func() -> void:
 		_duplicate_track_internal(track_index)
