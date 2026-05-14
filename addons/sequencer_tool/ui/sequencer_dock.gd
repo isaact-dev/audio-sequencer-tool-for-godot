@@ -397,6 +397,14 @@ func _resolve_final_track_drop_index(source_index: int) -> int:
 	target_index = clamp(target_index, 0, timeline.track_count - 1)
 	return target_index
 
+func _cancel_track_drag_state() -> void:
+	pending_drag_track_index = -1
+	dragged_track_index = -1
+	drag_hover_track_index = -1
+	drag_insert_after = false
+	is_dragging_track_row = false
+	_refresh_track_row_selection_styles()
+
 func _refresh_tracks_list(track_names: Array) -> void:
 	for child in tracks_list.get_children():
 		child.queue_free()
@@ -887,12 +895,7 @@ func _on_track_row_control_pressed(track_index: int) -> void:
 
 func _on_track_drag_strip_gui_input(event: InputEvent, track_index: int) -> void:
 	if timeline != null and timeline.is_playing:
-		pending_drag_track_index = -1
-		dragged_track_index = -1
-		drag_hover_track_index = -1
-		drag_insert_after = false
-		is_dragging_track_row = false
-		_refresh_track_row_selection_styles()
+		_cancel_track_drag_state()
 		return
 	if event is InputEventMouseButton:
 		var mouse_button_event := event as InputEventMouseButton
@@ -974,6 +977,9 @@ func _on_clip_volume_spin_value_changed(value: float) -> void:
 	timeline.set_selected_clip_volume(value)
 
 
-func _on_timeline_control_playback_state_changed(_is_playing: bool) -> void:
+func _on_timeline_control_playback_state_changed(is_playing_now: bool) -> void:
+	if is_playing_now:
+		_cancel_track_drag_state()
+
 	_refresh_playback_locked_ui()
 	_refresh_tracks_list(timeline.get_track_names())

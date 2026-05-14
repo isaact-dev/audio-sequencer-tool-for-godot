@@ -780,6 +780,29 @@ func _reset_selection_and_interaction_state() -> void:
 	resize_original_clip_data = {}
 	_update_cursor_shape()
 
+func _cancel_active_edit_interaction_state() -> void:
+	is_dragging_clip = false
+	dragged_clip_index = -1
+	drag_grab_offset = 0.0
+	drag_start_mouse_position = Vector2.ZERO
+	drag_original_clip_index = -1
+	drag_original_clip_data = {}
+	drag_original_selected_clips.clear()
+
+	is_resizing_clip = false
+	resized_clip_index = -1
+	resize_grab_offset = 0.0
+	resize_start_mouse_position = Vector2.ZERO
+	resize_original_clip_index = -1
+	resize_original_clip_data = {}
+
+	temporary_snap_override_active = false
+	hovered_resize_clip_index = -1
+	hovered_clip_index = -1
+
+	_update_cursor_shape()
+	queue_redraw()
+
 func _clear_selection() -> void:
 	selected_clip_indices.clear()
 	selected_clip_index = -1
@@ -2616,6 +2639,8 @@ func _get_subdivisions_per_second() -> float:
 func _set_playing(value: bool) -> void:
 	if is_playing == value:
 		return
+	if value:
+		_cancel_active_edit_interaction_state()
 	is_playing = value
 	playback_state_changed.emit(is_playing)
 	queue_redraw()
