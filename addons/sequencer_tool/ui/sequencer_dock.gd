@@ -298,6 +298,12 @@ func _request_new_sequence() -> void:
 func _request_open_sequence() -> void:
 	open_sequence_dialog.popup_centered_ratio()
 
+func _cancel_pending_audio_pick_flow() -> void:
+	pending_audio_pick_mode = ""
+
+	if pick_audio_dialog != null and pick_audio_dialog.visible:
+		pick_audio_dialog.hide()
+
 func _save_sequence_to_path(path: String) -> void:
 	var file := FileAccess.open(path, FileAccess.WRITE)
 	if file == null:
@@ -360,6 +366,10 @@ func _on_save_sequence_dialog_file_selected(path: String) -> void:
 
 
 func _on_button_add_clip_pressed() -> void:
+	if timeline != null and timeline.is_playing:
+		if timeline.has_method("_is_editing_blocked_by_playback"):
+			timeline._is_editing_blocked_by_playback(true)
+		return
 	timeline.prepare_next_clip_insertion_context()
 	pending_audio_pick_mode = "add_clip"
 	pick_audio_dialog.popup_centered_ratio()
@@ -815,8 +825,14 @@ func _on_clip_source_edit_focus_exited() -> void:
 	timeline.set_selected_clip_audio_path(source_edit.text)
 
 func _on_clip_source_pick_button_pressed() -> void:
+	if timeline != null and timeline.is_playing:
+		if timeline.has_method("_is_editing_blocked_by_playback"):
+			timeline._is_editing_blocked_by_playback(true)
+		return
+
 	if timeline.selected_clip_index < 0:
 		return
+
 	pending_audio_pick_mode = "set_selected_clip_source"
 	pick_audio_dialog.popup_centered_ratio()
 
@@ -980,6 +996,7 @@ func _on_clip_volume_spin_value_changed(value: float) -> void:
 func _on_timeline_control_playback_state_changed(is_playing_now: bool) -> void:
 	if is_playing_now:
 		_cancel_track_drag_state()
+		_cancel_pending_audio_pick_flow()
 
 	_refresh_playback_locked_ui()
 	_refresh_tracks_list(timeline.get_track_names())

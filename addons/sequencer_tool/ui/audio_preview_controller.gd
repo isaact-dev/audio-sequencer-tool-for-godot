@@ -6,6 +6,7 @@ extends Node
 var timeline: TimelineControl = null
 var previous_playhead_position: float = 0.0
 var was_playing_last_frame: bool = false
+var was_scrubbing_playhead_last_frame: bool = false
 var _previewed_clip_indices_this_frame: Dictionary = {}
 var _preview_players: Array[AudioStreamPlayer] = []
 var _active_previews: Array[Dictionary] = []
@@ -19,11 +20,13 @@ func set_timeline(value: TimelineControl) -> void:
 	if timeline == null:
 		previous_playhead_position = 0.0
 		was_playing_last_frame = false
+		was_scrubbing_playhead_last_frame = false
 		return
 
 	_ensure_preview_player_pool()
 	previous_playhead_position = float(timeline.playhead_position)
 	was_playing_last_frame = bool(timeline.is_playing)
+	was_scrubbing_playhead_last_frame = bool(timeline.is_scrubbing_playhead)
 
 func _ensure_preview_player_pool() -> void:
 	while _preview_players.size() < preview_player_pool_size:
@@ -45,6 +48,29 @@ func _get_clip_preview_duration_seconds(clip: Dictionary) -> float:
 
 	var clip_length := max(0.0, float(clip.get("length", 0.0)))
 	return clip_length / subdivisions_per_second
+
+func _get_clip_offset_seconds(clip: Dictionary, playhead_position: float) -> float:
+	var subdivisions_per_second := _get_timeline_subdivisions_per_second()
+	if subdivisions_per_second <= 0.0:
+		return 0.0
+
+	var clip_start := float(clip.get("start", 0.0))
+	var offset_subdivisions := max(0.0, playhead_position - clip_start)
+	var playback_speed := max(0.001, float(clip.get("playback_speed", 1.0)))
+
+	return (offset_subdivisions / subdivisions_per_second) * playback_speed
+
+func _get_clip_remaining_preview_duration_seconds(clip: Dictionary, playhead_position: float) -> float:
+	var subdivisions_per_second := _get_timeline_subdivisions_per_second()
+	if subdivisions_per_second <= 0.0:
+		return 0.0
+
+	var clip_start := float(clip.get("start", 0.0))
+	var clip_length := max(0.0, float(clip.get("length", 0.0)))
+	var clip_end = clip_start + clip_length
+	var remaining_subdivisions := max(0.0, clip_end - playhead_position)
+
+	return remaining_subdivisions / subdivisions_per_second
 
 func _resolve_track_preview_bus(_track_index: int) -> String:
 	return "Master"
@@ -182,6 +208,7 @@ func _process(_delta: float) -> void:
 		return
 
 	var is_playing_now := bool(timeline.is_playing)
+	var is_scrubbing_now := bool(timeline.is_scrubbing_playhead)
 	var current_playhead_position := float(timeline.playhead_position)
 
 	_previewed_clip_indices_this_frame.clear()
@@ -191,14 +218,36 @@ func _process(_delta: float) -> void:
 		if was_playing_last_frame:
 			stop_all_audio()
 
+		if is_scrubbing_now:
+			was_scrubbing_playhead_last_frame = true
+			was_playing_last_frame = false
+			return
+
 		previous_playhead_position = current_playhead_position
 		was_playing_last_frame = false
+		was_scrubbing_playhead_last_frame = false
+		return
+
+	if was_scrubbing_playhead_last_frame:
+		stop_all_audio()
+		_trigger_clips_at_playhead_position(current_playhead_position)
+		previous_playhead_position = current_playhead_position
+		was_playing_last_frame = true
+		was_scrubbing_playhead_last_frame = false
+		return
+
+	if _did_playhead_jump(previous_playhead_position, current_playhead_position):
+		stop_all_audio()
+		_trigger_clips_at_playhead_position(current_playhead_position)
+		previous_playhead_position = current_playhead_position
+		was_playing_last_frame = true
 		return
 
 	_trigger_crossed_clip_starts(previous_playhead_position, current_playhead_position)
 
 	previous_playhead_position = current_playhead_position
 	was_playing_last_frame = true
+	was_scrubbing_playhead_last_frame = false
 
 func _trigger_crossed_clip_starts(previous_position: float, current_position: float) -> void:
 	var total_subdivisions := float(
@@ -212,6 +261,14 @@ func _trigger_crossed_clip_starts(previous_position: float, current_position: fl
 	else:
 		_trigger_clip_starts_in_range(previous_position, total_subdivisions)
 		_trigger_clip_starts_in_range(0.0, current_position, true)
+
+func _did_playhead_jump(previous_position: float, current_position: float) -> bool:
+	if timeline == null:
+		return false
+
+	var max_expected_step := 1.5 # in subdivisions, safe margin
+
+	return abs(current_position - previous_position) > max_expected_step
 
 func _trigger_clip_starts_in_range(start_position: float, end_position: float, include_start: bool = false) -> void:
 	for clip_index in range(timeline.clips.size()):
@@ -231,7 +288,36 @@ func _trigger_clip_starts_in_range(start_position: float, end_position: float, i
 		_previewed_clip_indices_this_frame[clip_index] = true
 		_preview_clip(clip_index, clip)
 
-func _preview_clip(clip_index: int, clip: Dictionary) -> void:
+func _trigger_clips_at_playhead_position(position: float) -> void:
+	if timeline == null:
+		return
+
+	for clip_index in range(timeline.clips.size()):
+		var clip := timeline.clips[clip_index]
+		var clip_start := float(clip.get("start", -1.0))
+		var clip_length := float(clip.get("length", 0.0))
+
+		if clip_length <= 0.0:
+			continue
+
+		var clip_end := clip_start + clip_length
+
+		if position < clip_start or position >= clip_end:
+			continue
+
+		if _previewed_clip_indices_this_frame.has(clip_index):
+			continue
+
+		var offset_seconds := _get_clip_offset_seconds(clip, position)
+		var remaining_duration_seconds := _get_clip_remaining_preview_duration_seconds(clip, position)
+
+		if remaining_duration_seconds <= 0.0:
+			continue
+
+		_previewed_clip_indices_this_frame[clip_index] = true
+		_preview_clip(clip_index, clip, offset_seconds, remaining_duration_seconds)
+
+func _preview_clip(clip_index: int, clip: Dictionary, start_offset_seconds: float = 0.0, preview_duration_seconds: float = -1.0) -> void:
 	var audio_path := str(clip.get("audio_path", "")).strip_edges()
 	if audio_path.is_empty():
 		return
@@ -252,8 +338,11 @@ func _preview_clip(clip_index: int, clip: Dictionary) -> void:
 	if final_volume <= 0.0:
 		return
 
-	var preview_duration_seconds := _get_clip_preview_duration_seconds(clip)
-	if preview_duration_seconds <= 0.0:
+	var resolved_preview_duration_seconds := preview_duration_seconds
+	if resolved_preview_duration_seconds < 0.0:
+		resolved_preview_duration_seconds = _get_clip_preview_duration_seconds(clip)
+
+	if resolved_preview_duration_seconds <= 0.0:
 		return
 
 	var player := _acquire_preview_player(track_index)
@@ -263,11 +352,11 @@ func _preview_clip(clip_index: int, clip: Dictionary) -> void:
 	player.stream = audio_stream
 	player.pitch_scale = max(0.001, float(clip.get("playback_speed", 1.0)))
 	player.volume_db = linear_to_db(max(0.0001, final_volume))
-	player.play()
+	player.play(max(0.0, start_offset_seconds))
 
 	_active_previews.append({
 		"player": player,
-		"end_time": (Time.get_ticks_usec() / 1000000.0) + preview_duration_seconds,
+		"end_time": (Time.get_ticks_usec() / 1000000.0) + resolved_preview_duration_seconds,
 		"track_index": track_index,
 		"clip_index": clip_index,
 		"clip_volume": clip_volume

@@ -350,3 +350,27 @@ Instead, the audio preview runtime should be able to resolve playback through tr
 
 Track effects and track-level audio processing are easier to support cleanly if playback is routed through buses instead of being treated as one flat output stream.
 This keeps playback concerns in the audio preview runtime layer and avoids mixing runtime audio processing logic into timeline authoring code.
+
+## 2026-05-15 — Seeking into clips should use audio offset, but mute should not catch up mid-clip
+
+### Decision
+
+When playback is explicitly repositioned into the middle of a clip, such as by dragging or seeking the playhead while playback is active, the clip should be able to start playback from the matching offset inside its source audio.
+
+However, a track coming out of mute during playback should not cause clips that are currently under the playhead to start playing from the middle.
+Muted tracks should resume clip triggering only when the playhead crosses a clip start after the track has been unmuted.
+
+### Reasoning
+
+Seeking the playhead is an explicit playback-position change.
+In that case, it is expected that clips under the playhead can become audible from the correct source-audio offset so the preview reflects the current timeline position.
+
+Mute is different.
+Mute should behave as a playback gate for a track, not as a catch-up trigger for clips that were skipped while muted.
+
+This matters for dynamic audio systems, especially short transient sounds such as drums.
+If a drum track is muted and then unmuted while the playhead is in the middle of a drum hit, that hit should not suddenly start from the middle.
+It should wait until the next clip start crossing.
+
+For longer clips that need to fade in while already under the playhead, volume should be used instead of mute.
+A track or clip can have volume set to 0 while still allowing the underlying playback timing to continue, so raising volume later can reveal the sound smoothly without creating a mid-hit retrigger.
