@@ -12,7 +12,8 @@ var _preview_players: Array[AudioStreamPlayer] = []
 var _active_previews: Array[Dictionary] = []
 var _audio_stream_cache: Dictionary = {}
 
-const CLIP_START_TRIGGER_EPSILON := 0.00001
+const EPSILON := 0.00001
+const SILENT_VOLUME_DB := -80.0
 
 func set_timeline(value: TimelineControl) -> void:
 	timeline = value
@@ -92,6 +93,12 @@ func _get_preview_linear_volume(track_index: int, clip_index: int, fallback_clip
 
 	var track_volume := max(0.0, float(timeline.get_track_volume(track_index)))
 	return track_volume * max(0.0, clip_volume)
+
+func _linear_volume_to_preview_db(linear_volume: float) -> float:
+	if linear_volume <= EPSILON:
+		return SILENT_VOLUME_DB
+
+	return linear_to_db(linear_volume)
 
 func _acquire_preview_player(track_index: int) -> AudioStreamPlayer:
 	_ensure_preview_player_pool()
@@ -175,12 +182,17 @@ func _update_active_previews() -> void:
 			_release_preview_player(player)
 			continue
 
-		var final_volume := _get_preview_linear_volume(track_index, clip_index, clip_volume)
-		if final_volume <= 0.0:
+		if track_index < 0 or track_index >= timeline.track_count:
 			_release_preview_player(player)
 			continue
 
-		player.volume_db = linear_to_db(max(0.0001, final_volume))
+		if timeline.get_track_muted(track_index):
+			_release_preview_player(player)
+			continue
+
+		var final_volume := _get_preview_linear_volume(track_index, clip_index, clip_volume)
+		player.volume_db = _linear_volume_to_preview_db(final_volume)
+
 
 func _get_cached_audio_stream(audio_path: String) -> AudioStream:
 	var resolved_path := audio_path.strip_edges()
@@ -254,7 +266,7 @@ func _trigger_crossed_clip_starts(previous_position: float, current_position: fl
 		timeline.bars * timeline.beats_per_bar * timeline.subdivisions_per_beat
 	)
 
-	var include_start := previous_position <= CLIP_START_TRIGGER_EPSILON
+	var include_start := previous_position <= EPSILON
 
 	if current_position >= previous_position:
 		_trigger_clip_starts_in_range(previous_position, current_position, include_start)
@@ -276,10 +288,10 @@ func _trigger_clip_starts_in_range(start_position: float, end_position: float, i
 		var clip_start := float(clip.get("start", -1.0))
 
 		if include_start:
-			if clip_start < start_position - CLIP_START_TRIGGER_EPSILON or clip_start > end_position + CLIP_START_TRIGGER_EPSILON:
+			if clip_start < start_position - EPSILON or clip_start > end_position + EPSILON:
 				continue
 		else:
-			if clip_start <= start_position + CLIP_START_TRIGGER_EPSILON or clip_start > end_position + CLIP_START_TRIGGER_EPSILON:
+			if clip_start <= start_position + EPSILON or clip_start > end_position + EPSILON:
 				continue
 
 		if _previewed_clip_indices_this_frame.has(clip_index):
@@ -335,8 +347,6 @@ func _preview_clip(clip_index: int, clip: Dictionary, start_offset_seconds: floa
 
 	var clip_volume := max(0.0, float(clip.get("volume", 1.0)))
 	var final_volume := _get_preview_linear_volume(track_index, clip_index, clip_volume)
-	if final_volume <= 0.0:
-		return
 
 	var resolved_preview_duration_seconds := preview_duration_seconds
 	if resolved_preview_duration_seconds < 0.0:
@@ -351,7 +361,7 @@ func _preview_clip(clip_index: int, clip: Dictionary, start_offset_seconds: floa
 
 	player.stream = audio_stream
 	player.pitch_scale = max(0.001, float(clip.get("playback_speed", 1.0)))
-	player.volume_db = linear_to_db(max(0.0001, final_volume))
+	player.volume_db = _linear_volume_to_preview_db(final_volume)
 	player.play(max(0.0, start_offset_seconds))
 
 	_active_previews.append({
