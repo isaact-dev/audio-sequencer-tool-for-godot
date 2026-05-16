@@ -73,6 +73,23 @@ func _get_clip_remaining_preview_duration_seconds(clip: Dictionary, playhead_pos
 
 	return remaining_subdivisions / subdivisions_per_second
 
+func _get_available_source_duration_seconds(audio_stream: AudioStream, start_offset_seconds: float, playback_speed: float) -> float:
+	if audio_stream == null:
+		return 0.0
+
+	var source_length_seconds := audio_stream.get_length()
+	if source_length_seconds <= 0.0:
+		return INF
+
+	var resolved_start_offset := max(0.0, start_offset_seconds)
+	if resolved_start_offset >= source_length_seconds:
+		return 0.0
+
+	var resolved_playback_speed := max(0.001, playback_speed)
+	var source_remaining_seconds = source_length_seconds - resolved_start_offset
+
+	return source_remaining_seconds / resolved_playback_speed
+
 func _resolve_track_preview_bus(_track_index: int) -> String:
 	return "Master"
 
@@ -348,21 +365,36 @@ func _preview_clip(clip_index: int, clip: Dictionary, start_offset_seconds: floa
 	var clip_volume := max(0.0, float(clip.get("volume", 1.0)))
 	var final_volume := _get_preview_linear_volume(track_index, clip_index, clip_volume)
 
+	var playback_speed := max(0.001, float(clip.get("playback_speed", 1.0)))
+	var resolved_start_offset_seconds := max(0.0, start_offset_seconds)
+
 	var resolved_preview_duration_seconds := preview_duration_seconds
 	if resolved_preview_duration_seconds < 0.0:
 		resolved_preview_duration_seconds = _get_clip_preview_duration_seconds(clip)
+
+	var available_source_duration_seconds := _get_available_source_duration_seconds(
+		audio_stream,
+		resolved_start_offset_seconds,
+		playback_speed
+	)
+
+	resolved_preview_duration_seconds = min(
+		resolved_preview_duration_seconds,
+		available_source_duration_seconds
+	)
 
 	if resolved_preview_duration_seconds <= 0.0:
 		return
 
 	var player := _acquire_preview_player(track_index)
+
 	if player == null:
 		return
 
 	player.stream = audio_stream
-	player.pitch_scale = max(0.001, float(clip.get("playback_speed", 1.0)))
+	player.pitch_scale = playback_speed
 	player.volume_db = _linear_volume_to_preview_db(final_volume)
-	player.play(max(0.0, start_offset_seconds))
+	player.play(resolved_start_offset_seconds)
 
 	_active_previews.append({
 		"player": player,

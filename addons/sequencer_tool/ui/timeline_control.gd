@@ -30,6 +30,9 @@ var header_separator_color := Color(0.0, 0.0, 0.0, 0.45)
 
 var lane_color_a := Color(0.14, 0.14, 0.16)
 var lane_color_b := Color(0.12, 0.12, 0.14)
+var muted_lane_overlay_color := Color(0.0, 0.0, 0.0, 0.325)
+var muted_clip_overlay_color := Color(0.0, 0.0, 0.0, 0.455)
+var muted_track_text_color := Color(0.58, 0.58, 0.62)
 
 var subdivision_line_color := Color(0.20, 0.20, 0.24)
 var beat_line_color := Color(0.32, 0.32, 0.38)
@@ -2734,8 +2737,10 @@ func _draw_track_lanes() -> void:
 	for track_index in range(track_count):
 		var y := _track_to_y(track_index)
 		var color := lane_color_a if track_index % 2 == 0 else lane_color_b
-
 		draw_rect(Rect2(0, y, size.x, lane_height), color, true)
+
+		if get_track_muted(track_index):
+			draw_rect(Rect2(0, y, size.x, lane_height), muted_lane_overlay_color, true)
 
 		draw_line(
 			Vector2(0, y + lane_height),
@@ -2792,9 +2797,12 @@ func _draw_track_names() -> void:
 	for track_index in range(track_count):
 		var y := _track_to_y(track_index)
 		var track_name := "Track %d" % [track_index + 1]
-
 		if track_index < track_names.size():
 			track_name = track_names[track_index]
+
+		var track_text_color := bar_number_color
+		if get_track_muted(track_index):
+			track_text_color = muted_track_text_color
 
 		var text_position := Vector2(
 			8.0,
@@ -2808,7 +2816,7 @@ func _draw_track_names() -> void:
 			HORIZONTAL_ALIGNMENT_LEFT,
 			track_label_width - 16.0,
 			font_size,
-			bar_number_color
+			track_text_color
 		)
 
 func _draw_blocked_action_feedback() -> void:
@@ -2861,8 +2869,10 @@ func _draw_clips() -> void:
 			continue
 
 		var color: Color = _get_track_color(track_index)
-
 		draw_rect(rect, color, true)
+
+		if get_track_muted(track_index):
+			draw_rect(rect, muted_clip_overlay_color, true)
 
 		if selected_clip_indices.has(i):
 			draw_rect(rect, selected_clip_overlay_color, true)
