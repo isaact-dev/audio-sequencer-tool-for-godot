@@ -42,6 +42,10 @@ var bar_number_color := Color(0.92, 0.92, 0.96)
 var clip_text_color := Color(1.0, 1.0, 1.0)
 var clip_outline_color := Color(0.0, 0.0, 0.0, 0.45)
 
+var clip_waveform_color := Color(1.0, 1.0, 1.0, 0.102)
+var clip_waveform_step: float = 4.0
+var clip_waveform_vertical_padding: float = 8.0
+
 var track_color_palette: Array[Color] = [
 	Color(0.30, 0.40, 0.62),
 	Color(0.42, 0.34, 0.60),
@@ -289,6 +293,9 @@ func _get_clip_index_at_position(position: Vector2) -> int:
 
 func _get_clip_end(clip: Dictionary) -> float:
 	return float(clip["start"]) + float(clip["length"])
+
+func _clip_has_audio_source(clip: Dictionary) -> bool:
+	return not str(clip.get("audio_path", "")).strip_edges().is_empty()
 
 func _get_furthest_clip_end() -> float:
 	var furthest_end := 0.0
@@ -2844,6 +2851,47 @@ func _draw_playhead() -> void:
 		playhead_line_width
 	)
 
+func _draw_clip_waveform(rect: Rect2, clip: Dictionary) -> void:
+	if rect.size.x <= 8.0 or rect.size.y <= 8.0:
+		return
+
+	var audio_path := str(clip.get("audio_path", "")).strip_edges()
+	if audio_path.is_empty():
+		return
+
+	var left := rect.position.x + 6.0
+	var right := rect.end.x - 6.0
+	var top := rect.position.y + clip_waveform_vertical_padding
+	var bottom := rect.end.y - clip_waveform_vertical_padding
+
+	if right <= left or bottom <= top:
+		return
+
+	var width := right - left
+	var height := bottom - top
+	var center_y := top + (height * 0.5)
+	var bar_count := max(1, int(floor(width / clip_waveform_step)))
+	var seed := abs(audio_path.hash())
+	var phase_a := float(seed % 97) / 97.0 * TAU
+	var phase_b := float(seed % 53) / 53.0 * TAU
+	var phase_c := float(seed % 31) / 31.0 * TAU
+
+	for i in range(bar_count + 1):
+		var t := float(i) / float(bar_count)
+		var wave_a := abs(sin((t * TAU * 5.0) + phase_a))
+		var wave_b := abs(sin((t * TAU * 13.0) + phase_b))
+		var wave_c := abs(sin((t * TAU * 29.0) + phase_c))
+		var amplitude := clamp((wave_a * 0.55) + (wave_b * 0.30) + (wave_c * 0.15), 0.0, 1.0)
+		var half_height := lerp(height * 0.08, height * 0.5, amplitude)
+		var x := left + (float(i) * clip_waveform_step)
+
+		draw_line(
+			Vector2(x, center_y - half_height),
+			Vector2(x, center_y + half_height),
+			clip_waveform_color,
+			2.0
+		)
+
 func _draw_clips() -> void:
 	var font := get_theme_default_font()
 	var font_size := get_theme_default_font_size()
@@ -2870,6 +2918,9 @@ func _draw_clips() -> void:
 
 		var color: Color = _get_track_color(track_index)
 		draw_rect(rect, color, true)
+
+		if _clip_has_audio_source(clip):
+			_draw_clip_waveform(rect, clip)
 
 		if get_track_muted(track_index):
 			draw_rect(rect, muted_clip_overlay_color, true)
