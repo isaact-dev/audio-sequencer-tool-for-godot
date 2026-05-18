@@ -374,3 +374,40 @@ It should wait until the next clip start crossing.
 
 For longer clips that need to fade in while already under the playhead, volume should be used instead of mute.
 A track or clip can have volume set to 0 while still allowing the underlying playback timing to continue, so raising volume later can reveal the sound smoothly without creating a mid-hit retrigger.
+
+## 2026-05-17 — Runtime playback should use explicit MasterPlayer and TrackPlayer nodes
+
+### Decision
+
+Runtime playback should be built around reusable custom nodes that users can add to their own scenes.
+
+The main runtime nodes should be:
+
+- `SequencerMasterPlayer`
+- `SequencerTrackPlayer`
+
+The `SequencerMasterPlayer` is responsible for the song-level playback state.
+It controls the current song position, playback timing, track groups, and fading between track groups.
+It also plays most tracks internally.
+
+The `SequencerTrackPlayer` is responsible for playing one track or one track voice.
+A `SequencerTrackPlayer` does not need to be a child of a `SequencerMasterPlayer`.
+Instead, it should explicitly connect or sync to a `SequencerMasterPlayer`.
+
+This allows `SequencerTrackPlayer` nodes to live throughout a game scene wherever they make sense.
+For example, an instantiated singer scene can contain its own `SequencerTrackPlayer` and sync that player to a shared `SequencerMasterPlayer` elsewhere in the scene.
+
+### Reasoning
+A master player is needed because the song needs one authoritative playback position.
+The master player should decide where in the song playback currently is and which track groups are currently active.
+It should also own higher-level runtime behavior such as fading between track groups.
+
+Track players should be separate nodes because track playback may need to happen from different scene objects.
+This is especially important for track stacking and doubled performances.
+
+For example, if two singers should perform the same track, each singer can have a `SequencerTrackPlayer`.
+Both track players can sync to the same master player, but each one can apply small timing and pitch offsets.
+This makes it possible to create a doubling effect without hiding the behavior inside one large playback node.
+
+Requiring all track players to be children of the master player would make this less flexible.
+It would force runtime audio structure to follow the master player's scene hierarchy instead of the game object's scene hierarchy.
