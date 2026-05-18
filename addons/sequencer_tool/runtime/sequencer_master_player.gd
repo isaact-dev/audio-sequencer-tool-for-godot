@@ -6,10 +6,12 @@ signal song_position_changed(previous_position: float, current_position: float)
 signal track_player_registered(track_player: Node)
 signal track_player_unregistered(track_player: Node)
 
-@export var bpm: float = 120.0
-@export var bars: int = 8
-@export var beats_per_bar: int = 4
-@export var subdivisions_per_beat: int = 4
+@export var sequence: SequencerSequence = null
+
+var bpm: float = 120.0
+var bars: int = 8
+var beats_per_bar: int = 4
+var subdivisions_per_beat: int = 4
 @export var loop_enabled: bool = false
 
 @export var internal_track_indices: Array[int] = []
@@ -71,9 +73,15 @@ func set_song_position(value: float) -> void:
 	song_position_changed.emit(previous_position, song_position)
 
 func get_total_subdivisions() -> int:
+	if sequence != null:
+		return sequence.get_total_subdivisions()
+
 	return max(1, bars) * max(1, beats_per_bar) * max(1, subdivisions_per_beat)
 
 func _get_subdivisions_per_second() -> float:
+	if sequence != null:
+		return sequence.get_subdivisions_per_second()
+
 	return (max(1.0, bpm) / 60.0) * float(max(1, subdivisions_per_beat))
 
 func register_track_player(track_player: Node) -> void:
@@ -102,6 +110,9 @@ func get_registered_track_players() -> Array[Node]:
 func resolve_track_bus(track_index: int) -> StringName:
 	if track_bus_overrides.has(track_index):
 		return StringName(str(track_bus_overrides[track_index]))
+
+	if sequence != null:
+		return sequence.get_track_bus(track_index)
 
 	return default_audio_bus
 

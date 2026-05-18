@@ -1,6 +1,7 @@
 @tool
 extends Control
-class_name TimelineControl
+
+const SEQUENCER_SEQUENCE_SCRIPT := preload("res://addons/sequencer_tool/runtime/sequencer_sequence.gd")
 
 @export var bars: int = 8
 @export var beats_per_bar: int = 4
@@ -879,6 +880,18 @@ func get_sequence_data() -> Dictionary:
 		"clips": serialized_clips
 	}
 
+func create_sequence_resource(sequence_title: String = "") -> Resource:
+	var sequence_resource := SEQUENCER_SEQUENCE_SCRIPT.new()
+	var sequence_data := get_sequence_data()
+
+	var resolved_title := sequence_title.strip_edges()
+	if resolved_title.is_empty():
+		resolved_title = "Untitled Sequence"
+
+	sequence_data["title"] = resolved_title
+	sequence_resource.load_from_dictionary(sequence_data)
+
+	return sequence_resource
 
 func load_sequence_data(data: Dictionary) -> void:
 	bars = max(1, int(data.get("bars", bars)))

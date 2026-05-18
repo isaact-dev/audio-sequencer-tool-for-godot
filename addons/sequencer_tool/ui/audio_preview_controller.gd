@@ -3,7 +3,7 @@ extends Node
 
 @export var preview_player_pool_size: int = 32
 
-var timeline: TimelineControl = null
+var timeline: Control = null
 var previous_playhead_position: float = 0.0
 var was_playing_last_frame: bool = false
 var was_scrubbing_playhead_last_frame: bool = false
@@ -15,7 +15,7 @@ var _audio_stream_cache: Dictionary = {}
 const EPSILON := 0.00001
 const SILENT_VOLUME_DB := -80.0
 
-func set_timeline(value: TimelineControl) -> void:
+func set_timeline(value: Control) -> void:
 	timeline = value
 
 	if timeline == null:
