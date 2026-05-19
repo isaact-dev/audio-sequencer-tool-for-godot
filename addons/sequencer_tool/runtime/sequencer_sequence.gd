@@ -1,3 +1,4 @@
+@tool
 extends Resource
 class_name SequencerSequence
 
@@ -47,7 +48,7 @@ func get_track_bus(track_index: int) -> StringName:
 
 	return default_audio_bus
 
-func get_track_clips(track_index: int) -> Array[Dictionary]:
+func get_track_clips(track_index: int) -> Array:
 	var result: Array[Dictionary] = []
 
 	for clip in clips:

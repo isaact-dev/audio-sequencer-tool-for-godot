@@ -105,7 +105,7 @@ func _get_preview_linear_volume(track_index: int, clip_index: int, fallback_clip
 
 	var clip_volume := fallback_clip_volume
 	if clip_index >= 0 and clip_index < timeline.clips.size():
-		var clip := timeline.clips[clip_index]
+		var clip = timeline.clips[clip_index]
 		clip_volume = max(0.0, float(clip.get("volume", fallback_clip_volume)))
 
 	var track_volume := max(0.0, float(timeline.get_track_volume(track_index)))
@@ -301,7 +301,7 @@ func _did_playhead_jump(previous_position: float, current_position: float) -> bo
 
 func _trigger_clip_starts_in_range(start_position: float, end_position: float, include_start: bool = false) -> void:
 	for clip_index in range(timeline.clips.size()):
-		var clip := timeline.clips[clip_index]
+		var clip = timeline.clips[clip_index]
 		var clip_start := float(clip.get("start", -1.0))
 
 		if include_start:
@@ -322,7 +322,7 @@ func _trigger_clips_at_playhead_position(position: float) -> void:
 		return
 
 	for clip_index in range(timeline.clips.size()):
-		var clip := timeline.clips[clip_index]
+		var clip = timeline.clips[clip_index]
 		var clip_start := float(clip.get("start", -1.0))
 		var clip_length := float(clip.get("length", 0.0))
 

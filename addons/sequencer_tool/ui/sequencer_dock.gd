@@ -131,11 +131,11 @@ func _ready() -> void:
 
 	open_sequence_dialog.access = FileDialog.ACCESS_RESOURCES
 	open_sequence_dialog.file_mode = FileDialog.FILE_MODE_OPEN_FILE
-	open_sequence_dialog.filters = PackedStringArray(["*.json ; Sequencer Tool JSON"])
+	open_sequence_dialog.filters = PackedStringArray(["*.tres, *.res ; Sequencer Sequence Resource"])
 
 	save_sequence_dialog.access = FileDialog.ACCESS_RESOURCES
 	save_sequence_dialog.file_mode = FileDialog.FILE_MODE_SAVE_FILE
-	save_sequence_dialog.filters = PackedStringArray(["*.json ; Sequencer Tool JSON"])
+	save_sequence_dialog.filters = PackedStringArray(["*.tres, *.res ; Sequencer Sequence Resource"])
 
 	pick_audio_dialog.filters = PackedStringArray(["*.wav, *.ogg, *.mp3 ; Audio Files"])
 	pick_audio_no_audio_button = pick_audio_dialog.add_button("No Audio", true, "NO_AUDIO")
@@ -264,7 +264,7 @@ func _build_suggested_sequence_file_name() -> String:
 	file_name = file_name.replace(">", ")")
 	file_name = file_name.replace("|", "-")
 	file_name = file_name.to_lower()
-	return "%s.json" % file_name
+	return "%s.res" % file_name
 
 func _refresh_save_dialog_suggested_file() -> void:
 	if save_sequence_dialog == null:
@@ -305,28 +305,46 @@ func _cancel_pending_audio_pick_flow() -> void:
 		pick_audio_dialog.hide()
 
 func _save_sequence_to_path(path: String) -> void:
-	var file := FileAccess.open(path, FileAccess.WRITE)
-	if file == null:
-		push_error("Failed to open file for saving: %s" % path)
+	if timeline == null:
+		push_error("Cannot save sequence because TimelineControl is missing.")
 		return
-	var sequence_data = timeline.get_sequence_data()
-	sequence_data["title"] = sequence_title
-	file.store_string(JSON.stringify(sequence_data, "\t"))
-	current_sequence_path = path
+
+	if not timeline.has_method("create_sequence_resource"):
+		push_error("TimelineControl does not support SequencerSequence resource saving.")
+		return
+
+	var resolved_path := path
+	if resolved_path.get_extension().is_empty():
+		resolved_path += ".res"
+
+	var sequence_resource = timeline.create_sequence_resource(sequence_title)
+	var error := ResourceSaver.save(sequence_resource, resolved_path)
+
+	if error != OK:
+		push_error("Failed to save sequence resource: %s" % resolved_path)
+		return
+
+	current_sequence_path = resolved_path
 	_mark_sequence_clean()
 
 func _load_sequence_from_path(path: String) -> void:
-	var file := FileAccess.open(path, FileAccess.READ)
-	if file == null:
-		push_error("Failed to open file for loading: %s" % path)
+	var loaded_resource := ResourceLoader.load(path)
+
+	if loaded_resource == null:
+		push_error("Failed to load sequence resource: %s" % path)
 		return
-	var content := file.get_as_text()
-	var parsed = JSON.parse_string(content)
-	if not parsed is Dictionary:
-		push_error("Invalid sequence file: %s" % path)
+
+	if not loaded_resource.has_method("to_dictionary"):
+		push_error("Invalid sequence resource: %s" % path)
 		return
-	timeline.load_sequence_data(parsed)
-	sequence_title = _resolve_loaded_sequence_title(parsed, path)
+
+	var sequence_data = loaded_resource.to_dictionary()
+
+	timeline.load_sequence_data(sequence_data)
+	sequence_title = str(sequence_data.get("title", "")).strip_edges()
+	if sequence_title.is_empty():
+		sequence_title = path.get_file().get_basename()
+
 	_refresh_save_dialog_suggested_file()
 	current_sequence_path = path
 	_mark_sequence_clean()

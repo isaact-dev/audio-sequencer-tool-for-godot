@@ -889,6 +889,7 @@ func create_sequence_resource(sequence_title: String = "") -> Resource:
 		resolved_title = "Untitled Sequence"
 
 	sequence_data["title"] = resolved_title
+	sequence_data["format_version"] = 1
 	sequence_resource.load_from_dictionary(sequence_data)
 
 	return sequence_resource
