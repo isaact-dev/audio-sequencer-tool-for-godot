@@ -291,12 +291,31 @@ func _trigger_crossed_clip_starts(previous_position: float, current_position: fl
 		_trigger_clip_starts_in_range(previous_position, total_subdivisions)
 		_trigger_clip_starts_in_range(0.0, current_position, true)
 
+func _is_normal_loop_wrap(previous_position: float, current_position: float) -> bool:
+	if timeline == null:
+		return false
+	if not bool(timeline.loop_enabled):
+		return false
+
+	var total_subdivisions := float(
+		timeline.bars * timeline.beats_per_bar * timeline.subdivisions_per_beat
+	)
+	if total_subdivisions <= 0.0:
+		return false
+
+	return (
+		current_position < previous_position
+		and previous_position >= total_subdivisions - 2.0
+		and current_position <= 2.0
+	)
+
 func _did_playhead_jump(previous_position: float, current_position: float) -> bool:
 	if timeline == null:
 		return false
+	if _is_normal_loop_wrap(previous_position, current_position):
+		return false
 
 	var max_expected_step := 1.5 # in subdivisions, safe margin
-
 	return abs(current_position - previous_position) > max_expected_step
 
 func _trigger_clip_starts_in_range(start_position: float, end_position: float, include_start: bool = false) -> void:

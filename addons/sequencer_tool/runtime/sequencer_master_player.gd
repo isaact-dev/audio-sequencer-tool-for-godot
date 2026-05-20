@@ -104,7 +104,7 @@ func unregister_track_player(track_player: Node) -> void:
 	_registered_track_players.erase(track_player)
 	track_player_unregistered.emit(track_player)
 
-func get_registered_track_players() -> Array[Node]:
+func get_registered_track_players() -> Array:
 	return _registered_track_players.duplicate()
 
 func resolve_track_bus(track_index: int) -> StringName:

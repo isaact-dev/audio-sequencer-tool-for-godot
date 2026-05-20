@@ -154,6 +154,7 @@ func set_editor_undo_redo(value: EditorUndoRedoManager) -> void:
 func _clear_clip_settings_ui() -> void:
 	_updating_clip_settings_ui = true
 	name_edit.text = ""
+	source_edit.text = ""
 	track_spin.value = track_spin.min_value
 	start_spin.value = start_spin.min_value
 	length_spin.value = length_spin.min_value
@@ -161,8 +162,6 @@ func _clear_clip_settings_ui() -> void:
 	playback_speed_spin.value = 1.0
 	delete_clip_button.disabled = true
 	_updating_clip_settings_ui = false
-	source_edit.text = ""
-
 
 func _sync_clip_settings_ui(clip_index: int, clip_data: Dictionary) -> void:
 	_updating_clip_settings_ui = true
@@ -703,12 +702,16 @@ func _on_timeline_control_status_text_changed(text: String) -> void:
 	status_label.text = text
 
 func _on_timeline_control_selected_clip_changed(clip_index: int, clip_data: Dictionary) -> void:
-	if clip_index < 0 or clip_data.is_empty():
+	var single_clip_selected = timeline != null and timeline.selected_clip_indices.size() == 1
+
+	if not single_clip_selected or clip_index < 0 or clip_data.is_empty():
 		_clear_clip_settings_ui()
-		delete_clip_button.disabled = timeline.selected_clip_indices.is_empty()
+		delete_clip_button.disabled = timeline == null or timeline.selected_clip_indices.is_empty()
 		timeline_settings.visible = true
 		clip_settings.visible = false
+		_refresh_playback_locked_ui()
 		return
+
 	_sync_clip_settings_ui(clip_index, clip_data)
 	timeline_settings.visible = false
 	clip_settings.visible = true

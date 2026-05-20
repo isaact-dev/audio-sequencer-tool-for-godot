@@ -73,9 +73,12 @@ func _enter_tree():
 	)
 
 func _exit_tree():
-	remove_dock(dock)
-	dock.free()
-	dock = null
-	dock_ui = null
 	remove_custom_type("SequencerTrackPlayer")
 	remove_custom_type("SequencerMasterPlayer")
+
+	if dock != null:
+		remove_dock(dock)
+		dock.free()
+
+	dock = null
+	dock_ui = null

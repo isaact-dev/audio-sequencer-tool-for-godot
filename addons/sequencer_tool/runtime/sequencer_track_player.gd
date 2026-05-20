@@ -25,16 +25,13 @@ func _exit_tree() -> void:
 func connect_to_master(value: Node) -> void:
 	if master == value:
 		return
-
 	disconnect_from_master()
-
 	master = value
-
 	if master == null:
 		return
-
 	if master.has_method("register_track_player"):
 		master.register_track_player(self)
+	master_connected.emit(master)
 
 func disconnect_from_master() -> void:
 	if master == null:
