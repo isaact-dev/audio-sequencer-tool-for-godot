@@ -166,7 +166,7 @@ text = "Track"
 
 [node name="ClipTrackSpin" type="SpinBox" parent="HSplitContainer/SettingsHost/ClipSettings" unique_id=1371885533]
 layout_mode = 2
-max_value = 6.0
+max_value = 3.0
 
 [node name="ClipStartLabel" type="Label" parent="HSplitContainer/SettingsHost/ClipSettings" unique_id=961403422]
 layout_mode = 2
@@ -261,7 +261,7 @@ text = "Volume    "
 horizontal_alignment = 1
 
 [node name="ScrollContainer" type="ScrollContainer" parent="HSplitContainer/SettingsHost/TimelineSettings/Tracks" unique_id=662564042]
-custom_minimum_size = Vector2(0, 200)
+custom_minimum_size = Vector2(0, 132)
 layout_mode = 2
 size_flags_vertical = 3
 horizontal_scroll_mode = 0
@@ -316,7 +316,7 @@ size_flags_vertical = 3
 layout_mode = 2
 
 [node name="TimelineControl" type="Control" parent="HSplitContainer/TimelineBox/TimelinePanel/ScrollContainer" unique_id=890179304]
-custom_minimum_size = Vector2(1798, 368)
+custom_minimum_size = Vector2(3142, 224)
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3

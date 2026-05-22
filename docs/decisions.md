@@ -411,3 +411,15 @@ This makes it possible to create a doubling effect without hiding the behavior i
 
 Requiring all track players to be children of the master player would make this less flexible.
 It would force runtime audio structure to follow the master player's scene hierarchy instead of the game object's scene hierarchy.
+
+## 2026-05-20 — Centralize runtime voice playback and treat runtime sequences as stable
+
+### Decision
+
+Runtime audio voice playback logic should be centralized in `SequencerAudioTrackVoice` instead of being duplicated separately in `SequencerTrackPlayer` and `SequencerMasterPlayer`.
+
+`SequencerTrackPlayer` should own/delegate to one `SequencerAudioTrackVoice` for its external one-track voice playback.
+
+`SequencerMasterPlayer` should also use `SequencerAudioTrackVoice` for internally played tracks from `internal_track_indices`, creating one voice per internally played track.
+This keeps the clip-triggering, active-audio, stream-cache, volume, pitch, timing-offset, and bus-routing behavior in one reusable runtime component.
+Runtime `SequencerSequence` data is assumed to be stable during gameplay. Sequence contents are configured before playback and are not expected to change while runtime playback is active.
