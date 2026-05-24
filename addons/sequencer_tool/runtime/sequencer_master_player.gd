@@ -74,11 +74,15 @@ func pause() -> void:
 	playback_paused.emit()
 
 func set_song_position(value: float) -> void:
+	seek_song_position(value, false)
+
+func seek_song_position(value: float, trigger_active_clip: bool = false) -> void:
 	var previous_position := song_position
 	song_position = clamp(value, 0.0, float(get_total_subdivisions()))
 
-	_sync_internal_track_voices(previous_position, song_position)
-	_sync_registered_track_players(previous_position, song_position)
+	_seek_internal_track_voices(song_position, trigger_active_clip)
+	_seek_registered_track_players(song_position, trigger_active_clip)
+
 	song_position_changed.emit(previous_position, song_position)
 
 func get_total_subdivisions() -> int:
@@ -209,6 +213,15 @@ func _refresh_internal_track_voices() -> void:
 				&""
 			)
 
+func _seek_internal_track_voices(position: float, trigger_active_clip: bool = false) -> void:
+	for track_index in _internal_track_voices.keys():
+		var voice := _internal_track_voices[track_index] as Node
+		if voice == null or not is_instance_valid(voice):
+			_internal_track_voices.erase(track_index)
+			continue
+
+		if voice.has_method("seek_from_master"):
+			voice.seek_from_master(position, trigger_active_clip)
 
 func _sync_internal_track_voices(previous_position: float, current_position: float) -> void:
 	for track_index in _internal_track_voices.keys():
@@ -236,6 +249,18 @@ func clear_internal_audio_stream_cache() -> void:
 
 		if voice.has_method("clear_audio_stream_cache"):
 			voice.clear_audio_stream_cache()
+
+func _seek_registered_track_players(position: float, trigger_active_clip: bool = false) -> void:
+	for i in range(_registered_track_players.size() - 1, -1, -1):
+		var track_player := _registered_track_players[i]
+		if track_player == null or not is_instance_valid(track_player):
+			_registered_track_players.remove_at(i)
+			continue
+
+		if track_player.has_method("seek_from_master"):
+			track_player.seek_from_master(position, trigger_active_clip)
+		elif track_player.has_method("sync_from_master"):
+			track_player.sync_from_master(position, position)
 
 func _sync_registered_track_players(previous_position: float, current_position: float) -> void:
 	for i in range(_registered_track_players.size() - 1, -1, -1):

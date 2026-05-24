@@ -108,6 +108,13 @@ func sync_from_master(previous_position: float, current_position: float) -> void
 	var local_current_position := current_position + timing_offset_subdivisions
 	master_position_synced.emit(local_previous_position, local_current_position)
 
+func seek_from_master(position: float, trigger_active_clip: bool = false) -> void:
+	if _voice != null and _voice.has_method("seek_from_master"):
+		_voice.seek_from_master(position, trigger_active_clip)
+
+	var local_position := position + timing_offset_subdivisions
+	master_position_synced.emit(local_position, local_position)
+
 func get_pitch_scale_multiplier() -> float:
 	return pow(2.0, pitch_offset_semitones / 12.0)
 

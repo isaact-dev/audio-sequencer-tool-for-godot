@@ -423,3 +423,16 @@ Runtime audio voice playback logic should be centralized in `SequencerAudioTrack
 `SequencerMasterPlayer` should also use `SequencerAudioTrackVoice` for internally played tracks from `internal_track_indices`, creating one voice per internally played track.
 This keeps the clip-triggering, active-audio, stream-cache, volume, pitch, timing-offset, and bus-routing behavior in one reusable runtime component.
 Runtime `SequencerSequence` data is assumed to be stable during gameplay. Sequence contents are configured before playback and are not expected to change while runtime playback is active.
+
+## 2026-05-24 - Add separate playback advance from seek behavior to prevent unintended clip triggering
+
+### Decision
+
+Runtime playback should distinguish between normal playback advancement and explicit song position seeking.
+
+- `sync_from_master()` is used for normal playback and should trigger clips only when their start is crossed.
+- `seek_from_master()` is used for explicit position jumps and should not trigger crossed clip starts.
+
+By default, seeking should stop audio and not start clips mid-play.
+
+An optional mode allows seeking with `trigger_active_clip = true`, which starts the clip under the playhead from the correct offset.

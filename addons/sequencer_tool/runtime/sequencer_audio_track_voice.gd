@@ -50,6 +50,14 @@ func sync_from_master(previous_position: float, current_position: float) -> void
 	_trigger_crossed_clip_starts(local_previous_position, local_current_position)
 	_update_active_audio()
 
+func seek_from_master(position: float, trigger_active_clip: bool = false) -> void:
+	var local_position := position + timing_offset_subdivisions
+
+	stop_audio()
+
+	if trigger_active_clip:
+		_trigger_clip_at_position(local_position)
+
 func stop_audio() -> void:
 	_active_clip_index = -1
 	_active_clip_end_time = 0.0
@@ -153,7 +161,28 @@ func _get_clip_duration_seconds(clip: Dictionary) -> float:
 	var clip_length := max(0.0, float(clip.get("length", 0.0)))
 	return clip_length / subdivisions_per_second
 
-func _get_available_source_duration_seconds(audio_stream: AudioStream, playback_pitch_scale: float) -> float:
+func _get_clip_offset_seconds(clip: Dictionary, playhead_position: float, playback_pitch_scale: float) -> float:
+	var subdivisions_per_second := _get_subdivisions_per_second()
+	if subdivisions_per_second <= 0.0:
+		return 0.0
+
+	var clip_start := float(clip.get("start", 0.0))
+	var offset_subdivisions := max(0.0, playhead_position - clip_start)
+	return (offset_subdivisions / subdivisions_per_second) * max(0.001, playback_pitch_scale)
+
+func _get_clip_remaining_duration_seconds(clip: Dictionary, playhead_position: float) -> float:
+	var subdivisions_per_second := _get_subdivisions_per_second()
+	if subdivisions_per_second <= 0.0:
+		return 0.0
+
+	var clip_start := float(clip.get("start", 0.0))
+	var clip_length := max(0.0, float(clip.get("length", 0.0)))
+	var clip_end = clip_start + clip_length
+	var remaining_subdivisions := max(0.0, clip_end - playhead_position)
+
+	return remaining_subdivisions / subdivisions_per_second
+
+func _get_available_source_duration_seconds(audio_stream: AudioStream, start_offset_seconds: float, playback_pitch_scale: float) -> float:
 	if audio_stream == null:
 		return 0.0
 
@@ -161,7 +190,12 @@ func _get_available_source_duration_seconds(audio_stream: AudioStream, playback_
 	if source_length_seconds <= 0.0:
 		return INF
 
-	return source_length_seconds / max(0.001, playback_pitch_scale)
+	var resolved_start_offset := max(0.0, start_offset_seconds)
+	if resolved_start_offset >= source_length_seconds:
+		return 0.0
+
+	var source_remaining_seconds = source_length_seconds - resolved_start_offset
+	return source_remaining_seconds / max(0.001, playback_pitch_scale)
 
 func _get_clip_final_volume(clip: Dictionary) -> float:
 	var clip_volume := max(0.0, float(clip.get("volume", 1.0)))
@@ -181,6 +215,38 @@ func _trigger_crossed_clip_starts(previous_position: float, current_position: fl
 	else:
 		_trigger_clip_starts_in_range(previous_position, total_subdivisions, false)
 		_trigger_clip_starts_in_range(0.0, current_position, true)
+
+func _trigger_clip_at_position(position: float) -> void:
+	if _is_track_muted():
+		stop_audio()
+		return
+
+	var clips := _get_track_clips()
+
+	for clip_index in range(clips.size()):
+		var clip = clips[clip_index]
+		if not clip is Dictionary:
+			continue
+
+		var clip_start := float(clip.get("start", -1.0))
+		var clip_length := float(clip.get("length", 0.0))
+		if clip_length <= 0.0:
+			continue
+
+		var clip_end := clip_start + clip_length
+		if position < clip_start or position >= clip_end:
+			continue
+
+		var clip_playback_speed := max(0.001, float(clip.get("playback_speed", 1.0)))
+		var playback_pitch_scale = clip_playback_speed * get_pitch_scale_multiplier()
+		var offset_seconds := _get_clip_offset_seconds(clip, position, playback_pitch_scale)
+		var remaining_duration_seconds := _get_clip_remaining_duration_seconds(clip, position)
+
+		if remaining_duration_seconds <= 0.0:
+			continue
+
+		_play_clip(clip_index, clip, offset_seconds, remaining_duration_seconds)
+		return
 
 func _trigger_clip_starts_in_range(start_position: float, end_position: float, include_start: bool = false) -> void:
 	var clips := _get_track_clips()
@@ -208,7 +274,12 @@ func _trigger_clip_starts_in_range(start_position: float, end_position: float, i
 
 		_play_clip(clip_index, clip)
 
-func _play_clip(clip_index: int, clip: Dictionary) -> void:
+func _play_clip(
+	clip_index: int,
+	clip: Dictionary,
+	start_offset_seconds: float = 0.0,
+	preview_duration_seconds: float = -1.0
+) -> void:
 	var audio_path := str(clip.get("audio_path", "")).strip_edges()
 	if audio_path.is_empty():
 		return
@@ -221,9 +292,18 @@ func _play_clip(clip_index: int, clip: Dictionary) -> void:
 
 	var clip_playback_speed := max(0.001, float(clip.get("playback_speed", 1.0)))
 	var playback_pitch_scale = clip_playback_speed * get_pitch_scale_multiplier()
-	var clip_duration_seconds := _get_clip_duration_seconds(clip)
-	var source_duration_seconds := _get_available_source_duration_seconds(audio_stream, playback_pitch_scale)
-	var resolved_duration_seconds = min(clip_duration_seconds, source_duration_seconds)
+	var resolved_start_offset_seconds := max(0.0, start_offset_seconds)
+
+	var resolved_duration_seconds := preview_duration_seconds
+	if resolved_duration_seconds < 0.0:
+		resolved_duration_seconds = _get_clip_duration_seconds(clip)
+
+	var source_duration_seconds := _get_available_source_duration_seconds(
+		audio_stream,
+		resolved_start_offset_seconds,
+		playback_pitch_scale
+	)
+	resolved_duration_seconds = min(resolved_duration_seconds, source_duration_seconds)
 
 	if resolved_duration_seconds <= 0.0:
 		return
@@ -233,7 +313,7 @@ func _play_clip(clip_index: int, clip: Dictionary) -> void:
 	_audio_player.bus = resolve_audio_bus()
 	_audio_player.pitch_scale = playback_pitch_scale
 	_audio_player.volume_db = _linear_volume_to_db(_get_clip_final_volume(clip))
-	_audio_player.play()
+	_audio_player.play(resolved_start_offset_seconds)
 
 	_active_clip_index = clip_index
 	_active_clip_data = clip.duplicate(true)
