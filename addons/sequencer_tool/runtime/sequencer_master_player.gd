@@ -107,6 +107,9 @@ func register_track_player(track_player: Node) -> void:
 	_registered_track_players.append(track_player)
 	track_player_registered.emit(track_player)
 
+	if track_player.has_method("refresh_runtime_setup"):
+			track_player.refresh_runtime_setup()
+
 func unregister_track_player(track_player: Node) -> void:
 	if track_player == null:
 		return
@@ -140,28 +143,99 @@ func clear_track_bus_override(track_index: int) -> void:
 		track_bus_overrides.erase(track_index)
 
 func set_active_track_group(group_name: StringName, fade_seconds: float = -1.0) -> void:
+	if active_track_group == group_name and fade_seconds < 0.0:
+		return
+
 	active_track_group = group_name
 
 	if fade_seconds >= 0.0:
 		track_group_fade_seconds = fade_seconds
 
-func _build_internal_track_indices_signature() -> String:
-	var resolved_indices: Array[int] = []
+	refresh_runtime_setup()
 
-	for track_index in internal_track_indices:
+func get_active_internal_track_indices() -> Array[int]:
+	var group_track_indices := _get_active_track_group_track_indices()
+	if not group_track_indices.is_empty():
+		return group_track_indices
+
+	return _sanitize_track_indices(internal_track_indices)
+
+func _sanitize_track_indices(values: Array) -> Array[int]:
+	var result: Array[int] = []
+
+	for value in values:
+		var track_index := int(value)
 		if track_index < 0:
 			continue
-		if resolved_indices.has(track_index):
+		if result.has(track_index):
 			continue
-		resolved_indices.append(track_index)
+		result.append(track_index)
 
+	return result
+
+func _get_active_track_groups() -> Dictionary:
+	if not track_groups.is_empty():
+		return track_groups
+
+	if sequence != null:
+		var sequence_track_groups = sequence.get("track_groups")
+		if sequence_track_groups is Dictionary:
+			return sequence_track_groups as Dictionary
+
+	return {}
+
+func _get_active_track_group_track_indices() -> Array[int]:
+	if active_track_group.is_empty():
+		return []
+
+	var groups := _get_active_track_groups()
+	if not groups.has(active_track_group):
+		return []
+
+	var group_data = groups[active_track_group]
+
+	if group_data is Array:
+		return _sanitize_track_indices(group_data as Array)
+
+	if group_data is Dictionary:
+		var group_dictionary := group_data as Dictionary
+		if group_dictionary.has("track_indices"):
+			var track_indices = group_dictionary["track_indices"]
+			if track_indices is Array:
+				return _sanitize_track_indices(track_indices as Array)
+
+	return []
+
+func refresh_runtime_setup() -> void:
+	_internal_track_indices_signature = "__force_refresh__"
+	_refresh_internal_track_voices()
+	_refresh_registered_track_player_setups()
+
+
+func set_sequence_resource(value: SequencerSequence) -> void:
+	if sequence == value:
+		return
+
+	sequence = value
+	refresh_runtime_setup()
+
+
+func set_internal_track_indices(value: Array[int]) -> void:
+	internal_track_indices = value.duplicate()
+	refresh_runtime_setup()
+
+func _build_internal_track_indices_signature() -> String:
+	var resolved_indices := get_active_internal_track_indices()
 	resolved_indices.sort()
 
 	var parts: Array[String] = []
 	for track_index in resolved_indices:
 		parts.append(str(track_index))
 
-	return ",".join(parts)
+	return "%s:%s" % [
+		str(active_track_group),
+		",".join(parts)
+	]
 
 func _refresh_internal_track_voices() -> void:
 	var new_signature := _build_internal_track_indices_signature()
@@ -169,15 +243,7 @@ func _refresh_internal_track_voices() -> void:
 		return
 
 	_internal_track_indices_signature = new_signature
-
-	var wanted_track_indices: Array[int] = []
-
-	for track_index in internal_track_indices:
-		if track_index < 0:
-			continue
-		if wanted_track_indices.has(track_index):
-			continue
-		wanted_track_indices.append(track_index)
+	var wanted_track_indices := get_active_internal_track_indices()
 
 	for existing_track_index in _internal_track_voices.keys():
 		if wanted_track_indices.has(int(existing_track_index)):
@@ -261,6 +327,16 @@ func _seek_registered_track_players(position: float, trigger_active_clip: bool =
 			track_player.seek_from_master(position, trigger_active_clip)
 		elif track_player.has_method("sync_from_master"):
 			track_player.sync_from_master(position, position)
+
+func _refresh_registered_track_player_setups() -> void:
+	for i in range(_registered_track_players.size() - 1, -1, -1):
+		var track_player := _registered_track_players[i]
+		if track_player == null or not is_instance_valid(track_player):
+			_registered_track_players.remove_at(i)
+			continue
+
+		if track_player.has_method("refresh_runtime_setup"):
+			track_player.refresh_runtime_setup()
 
 func _sync_registered_track_players(previous_position: float, current_position: float) -> void:
 	for i in range(_registered_track_players.size() - 1, -1, -1):

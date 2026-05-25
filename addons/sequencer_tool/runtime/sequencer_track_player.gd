@@ -47,6 +47,30 @@ func _refresh_voice_configuration() -> void:
 		audio_bus_override
 	)
 
+func refresh_runtime_setup() -> void:
+	_ensure_voice()
+	_refresh_voice_configuration()
+
+func set_track_index(value: int) -> void:
+	track_index = max(0, value)
+	refresh_runtime_setup()
+
+func set_timing_offset(value: float) -> void:
+	timing_offset_subdivisions = value
+	refresh_runtime_setup()
+
+func set_pitch_offset(value: float) -> void:
+	pitch_offset_semitones = value
+	refresh_runtime_setup()
+
+func set_voice_volume(value: float) -> void:
+	volume = max(0.0, value)
+	refresh_runtime_setup()
+
+func set_audio_bus_override(value: StringName) -> void:
+	audio_bus_override = value
+	refresh_runtime_setup()
+
 func _get_sequence() -> Resource:
 	if master == null or not is_instance_valid(master):
 		return null
