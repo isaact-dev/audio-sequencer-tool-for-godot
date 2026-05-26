@@ -9,6 +9,7 @@ signal track_player_registered(track_player: Node)
 signal track_player_unregistered(track_player: Node)
 
 @export var sequence: SequencerSequence = null
+@export var fade_curve: Curve = null
 
 var bpm: float = 120.0
 var bars: int = 8
@@ -31,6 +32,14 @@ var _registered_track_players: Array[Node] = []
 var _internal_track_voices: Dictionary = {}
 var _internal_track_indices_signature: String = ""
 
+var _internal_track_voice_volumes: Dictionary = {}
+var _internal_track_voice_enabled: Dictionary = {}
+var _internal_track_voice_fade_start_volumes: Dictionary = {}
+var _internal_track_voice_fade_target_volumes: Dictionary = {}
+var _internal_track_voice_fade_elapsed: float = 0.0
+var _internal_track_voice_fade_duration: float = 0.0
+var _internal_track_voice_fading: bool = false
+
 func _ready() -> void:
 	set_process(true)
 	_refresh_internal_track_voices()
@@ -39,7 +48,10 @@ func _process(delta: float) -> void:
 	if not is_playing:
 		return
 
+	_update_internal_track_voice_fade(delta)
+
 	var previous_position := song_position
+
 	song_position += _get_subdivisions_per_second() * delta
 
 	var total_subdivisions := float(get_total_subdivisions())
@@ -151,7 +163,15 @@ func set_active_track_group(group_name: StringName, fade_seconds: float = -1.0) 
 	if fade_seconds >= 0.0:
 		track_group_fade_seconds = fade_seconds
 
-	refresh_runtime_setup()
+	var resolved_fade_seconds := track_group_fade_seconds
+	if fade_seconds >= 0.0:
+		resolved_fade_seconds = fade_seconds
+
+	if is_playing and resolved_fade_seconds > 0.0:
+		_begin_internal_track_group_fade(resolved_fade_seconds)
+	else:
+		_internal_track_voice_fading = false
+		refresh_runtime_setup()
 
 func get_active_internal_track_indices() -> Array[int]:
 	var group_track_indices := _get_active_track_group_track_indices()
@@ -237,6 +257,45 @@ func _build_internal_track_indices_signature() -> String:
 		",".join(parts)
 	]
 
+func _configure_internal_track_voice_volume(track_index: int, voice_volume: float) -> void:
+	if not _internal_track_voices.has(track_index):
+		return
+
+	var voice := _internal_track_voices[track_index] as Node
+	if voice == null or not is_instance_valid(voice):
+		return
+
+	var resolved_volume := max(0.0, voice_volume)
+	_internal_track_voice_volumes[track_index] = resolved_volume
+
+	if voice.has_method("configure"):
+		voice.configure(
+			self,
+			sequence,
+			track_index,
+			0.0,
+			0.0,
+			resolved_volume,
+			&""
+		)
+
+func _ensure_internal_track_voice(track_index: int, voice_volume: float = 1.0) -> Node:
+	if _internal_track_voices.has(track_index):
+		var existing_voice := _internal_track_voices[track_index] as Node
+		if existing_voice != null and is_instance_valid(existing_voice):
+			_configure_internal_track_voice_volume(track_index, voice_volume)
+			return existing_voice
+
+	var voice := SEQUENCER_AUDIO_TRACK_VOICE_SCRIPT.new()
+	voice.name = "InternalTrackVoice%d" % track_index
+	add_child(voice)
+
+	_internal_track_voices[track_index] = voice
+	_internal_track_voice_enabled[track_index] = true
+	_configure_internal_track_voice_volume(track_index, voice_volume)
+
+	return voice
+
 func _refresh_internal_track_voices() -> void:
 	var new_signature := _build_internal_track_indices_signature()
 	if new_signature == _internal_track_indices_signature:
@@ -256,28 +315,12 @@ func _refresh_internal_track_voices() -> void:
 			existing_voice.queue_free()
 
 		_internal_track_voices.erase(existing_track_index)
+		_internal_track_voice_volumes.erase(existing_track_index)
+		_internal_track_voice_enabled.erase(existing_track_index)
 
-	for track_index in wanted_track_indices:
-		var voice: Node = null
-
-		if _internal_track_voices.has(track_index):
-			voice = _internal_track_voices[track_index] as Node
-		else:
-			voice = SEQUENCER_AUDIO_TRACK_VOICE_SCRIPT.new()
-			voice.name = "InternalTrackVoice%d" % track_index
-			add_child(voice)
-			_internal_track_voices[track_index] = voice
-
-		if voice != null and is_instance_valid(voice) and voice.has_method("configure"):
-			voice.configure(
-				self,
-				sequence,
-				track_index,
-				0.0,
-				0.0,
-				1.0,
-				&""
-			)
+		for track_index in wanted_track_indices:
+				_internal_track_voice_enabled[track_index] = true
+				_ensure_internal_track_voice(track_index, 1.0)
 
 func _seek_internal_track_voices(position: float, trigger_active_clip: bool = false) -> void:
 	for track_index in _internal_track_voices.keys():
@@ -289,13 +332,121 @@ func _seek_internal_track_voices(position: float, trigger_active_clip: bool = fa
 		if voice.has_method("seek_from_master"):
 			voice.seek_from_master(position, trigger_active_clip)
 
+func _sample_track_group_fade_curve(t: float) -> float:
+	var resolved_t := clamp(t, 0.0, 1.0)
+
+	if fade_curve == null:
+		return resolved_t
+
+	var point_count := fade_curve.get_point_count()
+	if point_count <= 0:
+		return resolved_t
+
+	if point_count == 1:
+		return clamp(fade_curve.get_point_position(0).y, 0.0, 1.0)
+
+	var points: Array[Vector2] = []
+	for i in range(point_count):
+		points.append(fade_curve.get_point_position(i))
+
+	points.sort_custom(func(a: Vector2, b: Vector2) -> bool:
+		return a.x < b.x
+	)
+
+	if resolved_t <= points[0].x:
+		return clamp(points[0].y, 0.0, 1.0)
+
+	for i in range(1, points.size()):
+		var previous_point := points[i - 1]
+		var next_point := points[i]
+
+		if resolved_t > next_point.x:
+			continue
+
+		var segment_length := next_point.x - previous_point.x
+		if segment_length <= 0.00001:
+			return clamp(next_point.y, 0.0, 1.0)
+
+		var segment_t := clamp((resolved_t - previous_point.x) / segment_length, 0.0, 1.0)
+		return clamp(lerp(previous_point.y, next_point.y, segment_t), 0.0, 1.0)
+
+	return clamp(points.back().y, 0.0, 1.0)
+
+func _begin_internal_track_group_fade(fade_seconds: float) -> void:
+	var wanted_track_indices := get_active_internal_track_indices()
+	var all_track_indices: Array[int] = []
+
+	for existing_track_index in _internal_track_voices.keys():
+		var resolved_track_index := int(existing_track_index)
+		if not all_track_indices.has(resolved_track_index):
+			all_track_indices.append(resolved_track_index)
+
+	for track_index in wanted_track_indices:
+		if not all_track_indices.has(track_index):
+			all_track_indices.append(track_index)
+
+	_internal_track_voice_fade_start_volumes.clear()
+	_internal_track_voice_fade_target_volumes.clear()
+
+	for track_index in all_track_indices:
+		var is_incoming := wanted_track_indices.has(track_index)
+		var current_volume := float(_internal_track_voice_volumes.get(track_index, 0.0))
+
+		if is_incoming:
+			if not _internal_track_voices.has(track_index):
+				current_volume = 0.0
+				_ensure_internal_track_voice(track_index, current_volume)
+
+			_internal_track_voice_enabled[track_index] = true
+			_internal_track_voice_fade_start_volumes[track_index] = current_volume
+			_internal_track_voice_fade_target_volumes[track_index] = 1.0
+			_configure_internal_track_voice_volume(track_index, current_volume)
+		else:
+			_internal_track_voice_enabled[track_index] = false
+			_internal_track_voice_fade_start_volumes[track_index] = current_volume
+			_internal_track_voice_fade_target_volumes[track_index] = 0.0
+			_configure_internal_track_voice_volume(track_index, current_volume)
+
+	_internal_track_voice_fade_elapsed = 0.0
+	_internal_track_voice_fade_duration = max(0.001, fade_seconds)
+	_internal_track_voice_fading = true
+
+func _update_internal_track_voice_fade(delta: float) -> void:
+	if not _internal_track_voice_fading:
+		return
+
+	_internal_track_voice_fade_elapsed += delta
+
+	var raw_t := clamp(_internal_track_voice_fade_elapsed / _internal_track_voice_fade_duration, 0.0, 1.0)
+	var curve_t := _sample_track_group_fade_curve(raw_t)
+
+	for track_index in _internal_track_voice_fade_target_volumes.keys():
+		var start_volume := float(_internal_track_voice_fade_start_volumes.get(track_index, 0.0))
+		var target_volume := float(_internal_track_voice_fade_target_volumes.get(track_index, 0.0))
+		var resolved_volume := lerp(start_volume, target_volume, curve_t)
+
+		_configure_internal_track_voice_volume(int(track_index), resolved_volume)
+
+	if raw_t < 1.0:
+		return
+
+	_internal_track_voice_fading = false
+	_internal_track_voice_fade_start_volumes.clear()
+	_internal_track_voice_fade_target_volumes.clear()
+	_internal_track_voice_fade_elapsed = 0.0
+	_internal_track_voice_fade_duration = 0.0
+
+	_internal_track_indices_signature = "__force_refresh__"
+	_refresh_internal_track_voices()
+
 func _sync_internal_track_voices(previous_position: float, current_position: float) -> void:
 	for track_index in _internal_track_voices.keys():
 		var voice := _internal_track_voices[track_index] as Node
 		if voice == null or not is_instance_valid(voice):
 			_internal_track_voices.erase(track_index)
 			continue
-
+		if not bool(_internal_track_voice_enabled.get(track_index, true)):
+				continue
 		if voice.has_method("sync_from_master"):
 			voice.sync_from_master(previous_position, current_position)
 
