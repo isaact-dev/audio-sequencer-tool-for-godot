@@ -436,3 +436,23 @@ Runtime playback should distinguish between normal playback advancement and expl
 By default, seeking should stop audio and not start clips mid-play.
 
 An optional mode allows seeking with `trigger_active_clip = true`, which starts the clip under the playhead from the correct offset.
+
+## 2026-06-06 Use separate Curve resources for runtime track-group fade shapes
+
+### Decision
+
+Runtime track-group fades should use Godot `Curve` resources, not `Curve2D`.
+
+Fade curves represent a normalized audio fade shape:
+
+- x/time: `0.0` to `1.0`
+- y/volume: `0.0` to `1.0`
+
+Use separate curves for fade-in and fade-out:
+
+- `fade_in_curve`
+- `fade_out_curve`
+
+This makes the curve behavior easier to reason about in an audio context. A fade-in curve directly describes how volume rises over time, and a fade-out curve directly describes how volume falls over time.
+
+If either curve is `null`, runtime playback should fall back to a linear fade.

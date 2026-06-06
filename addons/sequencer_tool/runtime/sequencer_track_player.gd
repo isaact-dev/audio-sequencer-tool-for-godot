@@ -84,6 +84,10 @@ func _get_sequence() -> Resource:
 func _exit_tree() -> void:
 	disconnect_from_master()
 
+	if _voice != null and is_instance_valid(_voice):
+		if _voice.has_method("release_audio_player"):
+			_voice.release_audio_player()
+
 func connect_to_master(value: Node) -> void:
 	if master == value:
 		return

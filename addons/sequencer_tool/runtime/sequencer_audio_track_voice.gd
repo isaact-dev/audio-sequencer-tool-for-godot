@@ -20,7 +20,6 @@ const EPSILON := 0.00001
 const SILENT_VOLUME_DB := -80.0
 
 func _ready() -> void:
-	_ensure_audio_player()
 	set_process(false)
 
 func _process(_delta: float) -> void:
@@ -69,6 +68,15 @@ func stop_audio() -> void:
 
 	_audio_player.stop()
 	_audio_player.stream = null
+
+func release_audio_player() -> void:
+	stop_audio()
+
+	if _audio_player == null or not is_instance_valid(_audio_player):
+		return
+
+	_audio_player.queue_free()
+	_audio_player = null
 
 func clear_audio_stream_cache() -> void:
 	_audio_stream_cache.clear()
