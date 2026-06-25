@@ -3,6 +3,13 @@ extends Control
 
 const SEQUENCER_SEQUENCE_SCRIPT := preload("res://addons/sequencer_tool/runtime/sequencer_sequence.gd")
 
+signal status_text_changed(text: String)
+signal selected_clip_changed(clip_index: int, clip_data: Dictionary)
+signal tracks_changed(track_names: Array)
+signal sequence_changed()
+signal add_clip_requested()
+signal playback_state_changed(is_playing: bool)
+
 @export var bars: int = 8
 @export var beats_per_bar: int = 4
 @export var subdivisions_per_beat: int = 4
@@ -66,11 +73,6 @@ var track_mutes: Array[bool] = []
 var track_volumes: Array[float] = []
 var track_colors: Array[Color] = []
 
-var selected_clip_index: int = -1
-var selected_clip_indices: Array[int] = []
-var hovered_clip_index: int = -1
-var hovered_resize_clip_index: int = -1
-
 var selected_clip_outline_color := Color(1.0, 0.9, 0.35, 1.0)
 var selected_clip_overlay_color := Color(1.0, 1.0, 1.0, 0.08)
 var hovered_clip_outline_color := Color(1.0, 1.0, 1.0, 0.38)
@@ -82,6 +84,11 @@ var is_playing: bool = false
 var playhead_position: float = 0.0
 var is_scrubbing_playhead: bool = false
 var was_playing_before_scrub: bool = false
+
+var selected_clip_index: int = -1
+var selected_clip_indices: Array[int] = []
+var hovered_clip_index: int = -1
+var hovered_resize_clip_index: int = -1
 
 var loop_enabled: bool = false
 
@@ -100,8 +107,8 @@ var resize_handle_color := Color(1.0, 1.0, 1.0, 0.18)
 var active_resize_handle_color := Color(1.0, 0.9, 0.35, 0.95)
 
 var drag_original_clip_index: int = -1
-var drag_original_clip_data: Dictionary
-var drag_original_selected_clips: Dictionary
+var drag_original_clip_data: Dictionary = {}
+var drag_original_selected_clips: Dictionary = {}
 
 var resize_original_clip_index: int = -1
 var resize_original_clip_data: Dictionary = {}
@@ -113,12 +120,6 @@ var pending_clip_insertion_context: Dictionary = {}
 
 var clip_clipboard: Array[Dictionary] = []
 
-signal status_text_changed(text: String)
-signal selected_clip_changed(clip_index: int, clip_data: Dictionary)
-signal tracks_changed(track_names: Array)
-signal sequence_changed()
-signal add_clip_requested()
-signal playback_state_changed(is_playing: bool)
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
@@ -139,8 +140,72 @@ func _notification(what: int) -> void:
 func set_editor_undo_redo(value: EditorUndoRedoManager) -> void:
 	editor_undo_redo = value
 
+
 func _emit_sequence_changed() -> void:
 	sequence_changed.emit()
+
+func _emit_status_text() -> void:
+	status_text_changed.emit(_build_status_text())
+	_clear_action_feedback()
+
+func _emit_tracks_changed() -> void:
+	tracks_changed.emit(get_track_names())
+
+func _emit_selected_clip_changed() -> void:
+	if selected_clip_indices.size() == 1:
+		selected_clip_changed.emit(selected_clip_index, _get_selected_clip_data())
+	else:
+		selected_clip_changed.emit(-1, {})
+
+func _build_status_text() -> String:
+	var snap_text := "On" if _is_snap_active() else "Off"
+	var base_text := ""
+	if selected_clip_indices.size() > 1:
+		base_text = "Selected: %d clips | Snap: %s" % [
+			selected_clip_indices.size(),
+			snap_text
+		]
+	elif selected_clip_index < 0 or selected_clip_index >= clips.size():
+		base_text = "Selected: None | Start: - | Length: - | Snap: %s" % snap_text
+	else:
+		var clip := clips[selected_clip_index]
+
+		if not clip.has("name") or not clip.has("start") or not clip.has("length"):
+			base_text = "Selected: Invalid | Start: - | Length: - | Snap: %s" % snap_text
+		else:
+			var clip_name := str(clip["name"])
+			var start: float = clip["start"]
+			var length: float = clip["length"]
+			var track: int = clip["track"]
+
+			base_text = "Selected: %s | Start: %.2f | Length: %.2f | Track: %d | Snap: %s" % [
+				clip_name,
+				start,
+				length,
+				track,
+				snap_text
+			]
+
+	if not action_feedback_text.is_empty():
+		base_text += " | %s" % action_feedback_text
+
+	return base_text
+
+func _show_blocked_action_feedback(message: String) -> void:
+	_set_action_feedback(message)
+	blocked_action_flash_time = blocked_action_flash_duration
+	queue_redraw()
+
+func _set_action_feedback(message: String) -> void:
+	action_feedback_text = message
+	_emit_status_text()
+
+func _clear_action_feedback() -> void:
+	if action_feedback_text.is_empty():
+		return
+
+	action_feedback_text = ""
+
 
 func _get_total_subdivisions() -> int:
 	return bars * beats_per_bar * subdivisions_per_beat
@@ -154,38 +219,91 @@ func _get_total_height() -> float:
 func _get_bar_width() -> float:
 	return beats_per_bar * subdivisions_per_beat * pixels_per_subdivision
 
+func _get_subdivisions_per_second() -> float:
+	return (bpm / 60.0) * float(subdivisions_per_beat)
+
 func _update_timeline_size() -> void:
 	custom_minimum_size = Vector2(_get_total_width(), _get_total_height())
 
-func set_bars(value: int) -> void:
-	var new_bars := max(1, value)
-	if new_bars == bars:
-		return
+func _timeline_to_x(position: float) -> float:
+	return track_label_width + (position * pixels_per_subdivision)
 
-	var new_total_subdivisions := float(new_bars * beats_per_bar * subdivisions_per_beat)
-	var furthest_clip_end := _get_furthest_clip_end()
-	if new_total_subdivisions < furthest_clip_end:
-		_show_blocked_action_feedback("Can't reduce bars below the last clip end.")
-		return
+func _x_to_timeline(x: float) -> float:
+	return max(0.0, (x - track_label_width) / pixels_per_subdivision)
 
-	if editor_undo_redo == null:
-		_apply_bars_value(new_bars)
-		return
+func _y_to_track_index(y: float) -> int:
+	var local_y := y - header_height
 
-	var previous_bars := bars
+	if local_y < 0.0:
+		return 0
 
-	editor_undo_redo.create_action("Change Bars")
-	editor_undo_redo.add_do_method(self, "_apply_bars_value", new_bars)
-	editor_undo_redo.add_undo_method(self, "_apply_bars_value", previous_bars)
-	editor_undo_redo.commit_action()
+	var track_index := int(floor(local_y / lane_height))
+	return clamp(track_index, 0, track_count - 1)
+
+func _track_to_y(track_index: int) -> float:
+	return header_height + (track_index * lane_height)
+
+func _is_mouse_over_timeline_lanes(position: Vector2) -> bool:
+	return (
+		position.x >= track_label_width
+		and position.x <= size.x
+		and position.y >= header_height
+		and position.y <= size.y
+	)
+
+func _is_in_timeline_header(position: Vector2) -> bool:
+	return position.y >= 0.0 and position.y <= header_height and position.x >= track_label_width
+
+func _snap_timeline_position(position: float) -> float:
+	if not _is_snap_active():
+		return position
+
+	return round(position)
+
+func _is_snap_active() -> bool:
+	return snap_enabled != temporary_snap_override_active
+
+
+func _create_default_track_name(track_index: int) -> String:
+	return "Track %d" % [track_index + 1]
+
+func _ensure_track_names_size() -> void:
+	while track_names.size() < track_count:
+		track_names.append(_create_default_track_name(track_names.size()))
+	while track_names.size() > track_count:
+		track_names.remove_at(track_names.size() - 1)
+
+	while track_mutes.size() < track_count:
+		track_mutes.append(false)
+	while track_mutes.size() > track_count:
+		track_mutes.remove_at(track_mutes.size() - 1)
+
+	while track_volumes.size() < track_count:
+		track_volumes.append(1.0)
+	while track_volumes.size() > track_count:
+		track_volumes.remove_at(track_volumes.size() - 1)
+
+	while track_colors.size() > track_count:
+		track_colors.remove_at(track_colors.size() - 1)
+
+func get_track_names() -> Array[String]:
+	return track_names.duplicate()
+
+func get_track_muted(track_index: int) -> bool:
+	if track_index < 0 or track_index >= track_mutes.size():
+		return false
+	return track_mutes[track_index]
+
+func get_track_volume(track_index: int) -> float:
+	if track_index < 0 or track_index >= track_volumes.size():
+		return 1.0
+	return track_volumes[track_index]
 
 func _get_track_color(track_index: int) -> Color:
 	if track_color_palette.is_empty():
 		return Color(0.0, 1.0, 0.0, 1.0)
 
 	return track_color_palette[track_index % track_color_palette.size()]
-
-
 
 func set_track_count(value: int) -> void:
 	track_count = max(1, value)
@@ -236,23 +354,124 @@ func set_track_volume(track_index: int, value: float) -> void:
 		_set_track_volume_internal(track_index, value)
 	)
 
-func _timeline_to_x(position: float) -> float:
-	return track_label_width + (position * pixels_per_subdivision)
+func _build_track_state_snapshot() -> Dictionary:
+	var clips_snapshot: Array[Dictionary] = []
+	for clip in clips:
+		clips_snapshot.append(clip.duplicate(true))
 
-func _x_to_timeline(x: float) -> float:
-	return max(0.0, (x - track_label_width) / pixels_per_subdivision)
+	return {
+		"track_count": track_count,
+		"track_names": track_names.duplicate(),
+		"track_mutes": track_mutes.duplicate(),
+		"track_volumes": track_volumes.duplicate(),
+		"clips": clips_snapshot
+	}
 
-func _y_to_track_index(y: float) -> int:
-	var local_y := y - header_height
+func _apply_track_state_snapshot(state: Dictionary) -> void:
+	track_count = max(1, int(state.get("track_count", track_count)))
 
-	if local_y < 0.0:
-		return 0
+	track_names.clear()
+	for track_name in state.get("track_names", []):
+		track_names.append(str(track_name))
 
-	var track_index := int(floor(local_y / lane_height))
-	return clamp(track_index, 0, track_count - 1)
+	track_mutes.clear()
+	for muted in state.get("track_mutes", []):
+		track_mutes.append(bool(muted))
 
-func _track_to_y(track_index: int) -> float:
-	return header_height + (track_index * lane_height)
+	track_volumes.clear()
+	for volume in state.get("track_volumes", []):
+		track_volumes.append(max(0.0, float(volume)))
+
+	_ensure_track_names_size()
+
+	clips.clear()
+	for clip_data in state.get("clips", []):
+		if clip_data is Dictionary:
+			clips.append((clip_data as Dictionary).duplicate(true))
+
+	selected_clip_indices = selected_clip_indices.filter(func(index: int) -> bool:
+		return index >= 0 and index < clips.size()
+	)
+
+	if selected_clip_indices.is_empty():
+		selected_clip_index = -1
+	elif not selected_clip_indices.has(selected_clip_index):
+		selected_clip_index = selected_clip_indices.back()
+
+	hovered_clip_index = -1
+	hovered_resize_clip_index = -1
+	is_dragging_clip = false
+	dragged_clip_index = -1
+	drag_grab_offset = 0.0
+	drag_start_mouse_position = Vector2.ZERO
+	drag_original_clip_index = -1
+	drag_original_clip_data = {}
+	drag_original_selected_clips.clear()
+	is_resizing_clip = false
+	resized_clip_index = -1
+	resize_grab_offset = 0.0
+	resize_start_mouse_position = Vector2.ZERO
+	resize_original_clip_index = -1
+	resize_original_clip_data = {}
+	_update_cursor_shape()
+
+	_update_timeline_size()
+	_emit_sequence_changed()
+	_emit_status_text()
+	_emit_selected_clip_changed()
+	_emit_tracks_changed()
+	queue_redraw()
+
+func _commit_track_state_change(action_name: String, mutator: Callable) -> void:
+	var before_state := _build_track_state_snapshot()
+
+	mutator.call()
+
+	var after_state := _build_track_state_snapshot()
+	if before_state == after_state:
+		return
+
+	if editor_undo_redo == null:
+		_apply_track_state_snapshot(after_state)
+		return
+
+	_apply_track_state_snapshot(before_state)
+
+	editor_undo_redo.create_action(action_name)
+	editor_undo_redo.add_do_method(self, "_apply_track_state_snapshot", after_state)
+	editor_undo_redo.add_undo_method(self, "_apply_track_state_snapshot", before_state)
+	editor_undo_redo.commit_action()
+
+func set_bars(value: int) -> void:
+	var new_bars := max(1, value)
+	if new_bars == bars:
+		return
+
+	var new_total_subdivisions := float(new_bars * beats_per_bar * subdivisions_per_beat)
+	var furthest_clip_end := _get_furthest_clip_end()
+	if new_total_subdivisions < furthest_clip_end:
+		_show_blocked_action_feedback("Can't reduce bars below the last clip end.")
+		return
+
+	if editor_undo_redo == null:
+		_apply_bars_value(new_bars)
+		return
+
+	var previous_bars := bars
+
+	editor_undo_redo.create_action("Change Bars")
+	editor_undo_redo.add_do_method(self, "_apply_bars_value", new_bars)
+	editor_undo_redo.add_undo_method(self, "_apply_bars_value", previous_bars)
+	editor_undo_redo.commit_action()
+
+func _apply_bars_value(value: int) -> void:
+	bars = max(1, value)
+	_update_timeline_size()
+	_emit_status_text()
+	_emit_selected_clip_changed()
+	_emit_sequence_changed()
+	queue_redraw()
+
 
 func _get_clip_rect(clip: Dictionary) -> Rect2:
 	var track_index: int = clip["track"]
@@ -308,14 +527,6 @@ func _get_furthest_clip_end() -> float:
 		furthest_end = max(furthest_end, _get_clip_end(clip))
 
 	return furthest_end
-
-func _apply_bars_value(value: int) -> void:
-	bars = max(1, value)
-	_update_timeline_size()
-	_emit_status_text()
-	_emit_selected_clip_changed()
-	_emit_sequence_changed()
-	queue_redraw()
 
 func _get_track_clips_sorted(track_index: int, exclude_clip_index: int = -1, exclude_clip_indices: Array[int] = []) -> Array:
 	var clips_on_track: Array[Dictionary] = []
@@ -414,7 +625,6 @@ func _get_effective_max_clip_length(clip_index: int, clip: Dictionary) -> float:
 
 	return max(min_clip_length, min(overlap_max, audio_max))
 
-
 func get_clip_max_length(clip_index: int) -> float:
 	if clip_index < 0 or clip_index >= clips.size():
 		return min_clip_length
@@ -442,30 +652,6 @@ func _clamp_all_clip_lengths_for_current_tempo() -> bool:
 
 	return changed
 
-func _build_bpm_state_snapshot() -> Dictionary:
-	var clips_snapshot: Array[Dictionary] = []
-
-	for clip in clips:
-		clips_snapshot.append(clip.duplicate(true))
-
-	return {
-		"bpm": bpm,
-		"clips": clips_snapshot
-	}
-
-func _apply_bpm_state_snapshot(state: Dictionary) -> void:
-	bpm = max(1.0, float(state.get("bpm", bpm)))
-
-	clips.clear()
-	for clip_data in state.get("clips", []):
-		if clip_data is Dictionary:
-			clips.append((clip_data as Dictionary).duplicate(true))
-
-	_emit_sequence_changed()
-	_emit_status_text()
-	_emit_selected_clip_changed()
-	queue_redraw()
-
 func _find_available_start(track_index: int, clip_length: float, preferred_start: float, exclude_clip_index: int = -1) -> float:
 	var total_subdivisions := float(_get_total_subdivisions())
 	var max_start := max(0.0, total_subdivisions - clip_length)
@@ -485,9 +671,6 @@ func _find_available_start(track_index: int, clip_length: float, preferred_start
 			return -1.0
 
 	return candidate_start
-
-func _find_first_valid_start(track_index: int, clip_length: float, exclude_clip_index: int = -1) -> float:
-	return _find_available_start(track_index, clip_length, 0.0, exclude_clip_index)
 
 func _can_place_clip_at(track_index: int, exclude_clip_index: int, clip_length: float, start_position: float) -> bool:
 	var limits := _get_clip_start_limits(track_index, exclude_clip_index, clip_length, start_position)
@@ -548,309 +731,6 @@ func _extract_audio_paths_from_drop_data(data: Variant) -> Array[String]:
 
 	return audio_paths
 
-func _build_status_text() -> String:
-	var snap_text := "On" if _is_snap_active() else "Off"
-	var base_text := ""
-	if selected_clip_indices.size() > 1:
-		base_text = "Selected: %d clips | Snap: %s" % [
-			selected_clip_indices.size(),
-			snap_text
-		]
-	elif selected_clip_index < 0 or selected_clip_index >= clips.size():
-		base_text = "Selected: None | Start: - | Length: - | Snap: %s" % snap_text
-	else:
-		var clip := clips[selected_clip_index]
-
-		if not clip.has("name") or not clip.has("start") or not clip.has("length"):
-			base_text = "Selected: Invalid | Start: - | Length: - | Snap: %s" % snap_text
-		else:
-			var clip_name := str(clip["name"])
-			var start: float = clip["start"]
-			var length: float = clip["length"]
-			var track: int = clip["track"]
-
-			base_text = "Selected: %s | Start: %.2f | Length: %.2f | Track: %d | Snap: %s" % [
-				clip_name,
-				start,
-				length,
-				track,
-				snap_text
-			]
-
-	if not action_feedback_text.is_empty():
-		base_text += " | %s" % action_feedback_text
-
-	return base_text
-
-func _emit_status_text() -> void:
-	status_text_changed.emit(_build_status_text())
-	_clear_action_feedback()
-
-func _show_blocked_action_feedback(message: String) -> void:
-	_set_action_feedback(message)
-	blocked_action_flash_time = blocked_action_flash_duration
-	queue_redraw()
-
-func _set_action_feedback(message: String) -> void:
-	action_feedback_text = message
-	_emit_status_text()
-
-func _clear_action_feedback() -> void:
-	if action_feedback_text.is_empty():
-		return
-
-	action_feedback_text = ""
-
-func set_playhead_position(value: float) -> void:
-	playhead_position = clamp(value, 0.0, float(_get_total_subdivisions()))
-	queue_redraw()
-
-func set_loop_enabled(value: bool) -> void:
-	loop_enabled = value
-	_emit_status_text()
-	queue_redraw()
-
-func _update_playhead_from_mouse_x(mouse_x: float) -> void:
-	set_playhead_position(_x_to_timeline(mouse_x))
-
-func _begin_playhead_scrub(mouse_x: float) -> void:
-	is_scrubbing_playhead = true
-	was_playing_before_scrub = is_playing
-	_set_playing(false)
-	_update_playhead_from_mouse_x(mouse_x)
-
-func _end_playhead_scrub() -> void:
-	if not is_scrubbing_playhead:
-		return
-
-	is_scrubbing_playhead = false
-
-	if was_playing_before_scrub:
-		_set_playing(true)
-
-	was_playing_before_scrub = false
-	queue_redraw()
-
-func _ensure_playhead_visible_during_playback() -> void:
-	var playhead_x := _timeline_to_x(playhead_position)
-
-	var playhead_rect := Rect2(
-		playhead_x - 1.0,
-		0.0,
-		2.0,
-		size.y
-	)
-
-	_ensure_rect_visible_horizontally(playhead_rect, playhead_follow_margin)
-
-func _create_default_track_name(track_index: int) -> String:
-	return "Track %d" % [track_index + 1]
-
-func _ensure_track_names_size() -> void:
-	while track_names.size() < track_count:
-		track_names.append(_create_default_track_name(track_names.size()))
-	while track_names.size() > track_count:
-		track_names.remove_at(track_names.size() - 1)
-
-	while track_mutes.size() < track_count:
-		track_mutes.append(false)
-	while track_mutes.size() > track_count:
-		track_mutes.remove_at(track_mutes.size() - 1)
-
-	while track_volumes.size() < track_count:
-		track_volumes.append(1.0)
-	while track_volumes.size() > track_count:
-		track_volumes.remove_at(track_volumes.size() - 1)
-
-	while track_colors.size() > track_count:
-		track_colors.remove_at(track_colors.size() - 1)
-
-func get_track_names() -> Array[String]:
-	return track_names.duplicate()
-
-func get_track_muted(track_index: int) -> bool:
-	if track_index < 0 or track_index >= track_mutes.size():
-		return false
-	return track_mutes[track_index]
-
-func get_track_volume(track_index: int) -> float:
-	if track_index < 0 or track_index >= track_volumes.size():
-		return 1.0
-	return track_volumes[track_index]
-func _build_track_state_snapshot() -> Dictionary:
-	var clips_snapshot: Array[Dictionary] = []
-	for clip in clips:
-		clips_snapshot.append(clip.duplicate(true))
-
-	return {
-		"track_count": track_count,
-		"track_names": track_names.duplicate(),
-		"track_mutes": track_mutes.duplicate(),
-		"track_volumes": track_volumes.duplicate(),
-		"clips": clips_snapshot
-	}
-
-func _apply_track_state_snapshot(state: Dictionary) -> void:
-	track_count = max(1, int(state.get("track_count", track_count)))
-
-	track_names.clear()
-	for track_name in state.get("track_names", []):
-		track_names.append(str(track_name))
-
-	track_mutes.clear()
-	for muted in state.get("track_mutes", []):
-		track_mutes.append(bool(muted))
-
-	track_volumes.clear()
-	for volume in state.get("track_volumes", []):
-		track_volumes.append(max(0.0, float(volume)))
-
-	_ensure_track_names_size()
-
-	clips.clear()
-	for clip_data in state.get("clips", []):
-		if clip_data is Dictionary:
-			clips.append((clip_data as Dictionary).duplicate(true))
-
-	selected_clip_indices = selected_clip_indices.filter(func(index: int) -> bool:
-		return index >= 0 and index < clips.size()
-	)
-
-	if selected_clip_indices.is_empty():
-		selected_clip_index = -1
-	elif not selected_clip_indices.has(selected_clip_index):
-		selected_clip_index = selected_clip_indices.back()
-
-	hovered_clip_index = -1
-	hovered_resize_clip_index = -1
-	is_dragging_clip = false
-	dragged_clip_index = -1
-	drag_grab_offset = 0.0
-	drag_start_mouse_position = Vector2.ZERO
-	drag_original_clip_index = -1
-	drag_original_clip_data = {}
-	drag_original_selected_clips.clear()
-	is_resizing_clip = false
-	resized_clip_index = -1
-	resize_grab_offset = 0.0
-	resize_start_mouse_position = Vector2.ZERO
-	resize_original_clip_index = -1
-	resize_original_clip_data = {}
-	_update_cursor_shape()
-
-	_update_timeline_size()
-	_emit_sequence_changed()
-	_emit_status_text()
-	_emit_selected_clip_changed()
-	_emit_tracks_changed()
-	queue_redraw()
-
-func _commit_track_state_change(action_name: String, mutator: Callable) -> void:
-	var before_state := _build_track_state_snapshot()
-
-	mutator.call()
-
-	var after_state := _build_track_state_snapshot()
-	if before_state == after_state:
-		return
-
-	if editor_undo_redo == null:
-		_apply_track_state_snapshot(after_state)
-		return
-
-	_apply_track_state_snapshot(before_state)
-
-	editor_undo_redo.create_action(action_name)
-	editor_undo_redo.add_do_method(self, "_apply_track_state_snapshot", after_state)
-	editor_undo_redo.add_undo_method(self, "_apply_track_state_snapshot", before_state)
-	editor_undo_redo.commit_action()
-
-func _emit_tracks_changed() -> void:
-	tracks_changed.emit(get_track_names())
-
-func _reset_selection_and_interaction_state() -> void:
-	selected_clip_indices.clear()
-	selected_clip_index = -1
-	hovered_clip_index = -1
-	hovered_resize_clip_index = -1
-
-	drag_original_selected_clips.clear()
-
-	is_dragging_clip = false
-	dragged_clip_index = -1
-	drag_grab_offset = 0.0
-	drag_start_mouse_position = Vector2.ZERO
-	drag_original_clip_index = -1
-	drag_original_clip_data = {}
-
-	is_resizing_clip = false
-	resized_clip_index = -1
-	resize_grab_offset = 0.0
-	resize_start_mouse_position = Vector2.ZERO
-	resize_original_clip_index = -1
-	resize_original_clip_data = {}
-	_update_cursor_shape()
-
-func _cancel_active_edit_interaction_state() -> void:
-	is_dragging_clip = false
-	dragged_clip_index = -1
-	drag_grab_offset = 0.0
-	drag_start_mouse_position = Vector2.ZERO
-	drag_original_clip_index = -1
-	drag_original_clip_data = {}
-	drag_original_selected_clips.clear()
-
-	is_resizing_clip = false
-	resized_clip_index = -1
-	resize_grab_offset = 0.0
-	resize_start_mouse_position = Vector2.ZERO
-	resize_original_clip_index = -1
-	resize_original_clip_data = {}
-
-	temporary_snap_override_active = false
-	hovered_resize_clip_index = -1
-	hovered_clip_index = -1
-
-	_update_cursor_shape()
-	queue_redraw()
-
-func _clear_selection() -> void:
-	selected_clip_indices.clear()
-	selected_clip_index = -1
-	_update_cursor_shape()
-
-func _set_single_selection(clip_index: int) -> void:
-	selected_clip_indices = [clip_index]
-	selected_clip_index = clip_index
-	_update_cursor_shape()
-
-func _toggle_selection(clip_index: int) -> void:
-	if selected_clip_indices.has(clip_index):
-		selected_clip_indices.erase(clip_index)
-	else:
-		selected_clip_indices.append(clip_index)
-
-	if selected_clip_indices.is_empty():
-		selected_clip_index = -1
-	else:
-		selected_clip_index = selected_clip_indices.back()
-	_update_cursor_shape()
-
-func _set_selected_clip_indices(indices: Array[int]) -> void:
-	selected_clip_indices.clear()
-
-	for clip_index in indices:
-		if clip_index >= 0 and clip_index < clips.size():
-			selected_clip_indices.append(clip_index)
-
-	if selected_clip_indices.is_empty():
-		selected_clip_index = -1
-	else:
-		selected_clip_index = selected_clip_indices.back()
-
-	_emit_status_text()
-	_emit_selected_clip_changed()
-	queue_redraw()
 
 func get_sequence_data() -> Dictionary:
 	var serialized_clips: Array[Dictionary] = []
@@ -969,63 +849,233 @@ func create_new_sequence(new_bars: int, new_beats_per_bar: int, new_subdivisions
 		"clips": []
 	})
 
-func _is_mouse_over_timeline_lanes(position: Vector2) -> bool:
-	return (
-		position.x >= track_label_width
-		and position.x <= size.x
-		and position.y >= header_height
-		and position.y <= size.y
+
+func _reset_selection_and_interaction_state() -> void:
+	selected_clip_indices.clear()
+	selected_clip_index = -1
+	hovered_clip_index = -1
+	hovered_resize_clip_index = -1
+
+	drag_original_selected_clips.clear()
+
+	is_dragging_clip = false
+	dragged_clip_index = -1
+	drag_grab_offset = 0.0
+	drag_start_mouse_position = Vector2.ZERO
+	drag_original_clip_index = -1
+	drag_original_clip_data = {}
+
+	is_resizing_clip = false
+	resized_clip_index = -1
+	resize_grab_offset = 0.0
+	resize_start_mouse_position = Vector2.ZERO
+	resize_original_clip_index = -1
+	resize_original_clip_data = {}
+	_update_cursor_shape()
+
+func _cancel_active_edit_interaction_state() -> void:
+	is_dragging_clip = false
+	dragged_clip_index = -1
+	drag_grab_offset = 0.0
+	drag_start_mouse_position = Vector2.ZERO
+	drag_original_clip_index = -1
+	drag_original_clip_data = {}
+	drag_original_selected_clips.clear()
+
+	is_resizing_clip = false
+	resized_clip_index = -1
+	resize_grab_offset = 0.0
+	resize_start_mouse_position = Vector2.ZERO
+	resize_original_clip_index = -1
+	resize_original_clip_data = {}
+
+	temporary_snap_override_active = false
+	hovered_resize_clip_index = -1
+	hovered_clip_index = -1
+
+	_update_cursor_shape()
+	queue_redraw()
+
+func _clear_selection() -> void:
+	selected_clip_indices.clear()
+	selected_clip_index = -1
+	_update_cursor_shape()
+
+func _set_single_selection(clip_index: int) -> void:
+	selected_clip_indices = [clip_index]
+	selected_clip_index = clip_index
+	_update_cursor_shape()
+
+func _toggle_selection(clip_index: int) -> void:
+	if selected_clip_indices.has(clip_index):
+		selected_clip_indices.erase(clip_index)
+	else:
+		selected_clip_indices.append(clip_index)
+
+	if selected_clip_indices.is_empty():
+		selected_clip_index = -1
+	else:
+		selected_clip_index = selected_clip_indices.back()
+	_update_cursor_shape()
+
+func _set_selected_clip_indices(indices: Array[int]) -> void:
+	selected_clip_indices.clear()
+
+	for clip_index in indices:
+		if clip_index >= 0 and clip_index < clips.size():
+			selected_clip_indices.append(clip_index)
+
+	if selected_clip_indices.is_empty():
+		selected_clip_index = -1
+	else:
+		selected_clip_index = selected_clip_indices.back()
+
+	_emit_status_text()
+	_emit_selected_clip_changed()
+	queue_redraw()
+
+func _get_selected_clip_data() -> Dictionary:
+	if selected_clip_index < 0 or selected_clip_index >= clips.size():
+		return {}
+
+	return clips[selected_clip_index].duplicate(true)
+
+func clear_selected_clip() -> void:
+	if selected_clip_index == -1:
+		return
+
+	selected_clip_index = -1
+	selected_clip_indices.clear()
+	_emit_status_text()
+	_emit_selected_clip_changed()
+	queue_redraw()
+
+
+func set_playhead_position(value: float) -> void:
+	playhead_position = clamp(value, 0.0, float(_get_total_subdivisions()))
+	queue_redraw()
+
+func set_loop_enabled(value: bool) -> void:
+	loop_enabled = value
+	_emit_status_text()
+	queue_redraw()
+
+func _update_playhead_from_mouse_x(mouse_x: float) -> void:
+	set_playhead_position(_x_to_timeline(mouse_x))
+
+func _begin_playhead_scrub(mouse_x: float) -> void:
+	is_scrubbing_playhead = true
+	was_playing_before_scrub = is_playing
+	_set_playing(false)
+	_update_playhead_from_mouse_x(mouse_x)
+
+func _end_playhead_scrub() -> void:
+	if not is_scrubbing_playhead:
+		return
+
+	is_scrubbing_playhead = false
+
+	if was_playing_before_scrub:
+		_set_playing(true)
+
+	was_playing_before_scrub = false
+	queue_redraw()
+
+func _ensure_playhead_visible_during_playback() -> void:
+	var playhead_x := _timeline_to_x(playhead_position)
+
+	var playhead_rect := Rect2(
+		playhead_x - 1.0,
+		0.0,
+		2.0,
+		size.y
 	)
 
-func _can_drop_data(at_position: Vector2, data: Variant) -> bool:
-	if _is_editing_blocked_by_playback():
-		return false
-	if not _is_mouse_over_timeline_lanes(at_position):
-		return false
-	return not _extract_audio_paths_from_drop_data(data).is_empty()
+	_ensure_rect_visible_horizontally(playhead_rect, playhead_follow_margin)
 
-func _drop_data(at_position: Vector2, data: Variant) -> void:
-	var audio_paths := _extract_audio_paths_from_drop_data(data)
-	if audio_paths.is_empty():
+func _is_editing_blocked_by_playback(show_feedback: bool = false) -> bool:
+	if not is_playing:
+		return false
+
+	if show_feedback:
+		_show_blocked_action_feedback("Pause playback before editing.")
+
+	return true
+
+func _set_playing(value: bool) -> void:
+	if is_playing == value:
+		return
+	if value:
+		_cancel_active_edit_interaction_state()
+	is_playing = value
+	playback_state_changed.emit(is_playing)
+	queue_redraw()
+
+func play() -> void:
+	_set_playing(true)
+
+func pause() -> void:
+	_set_playing(false)
+
+func _build_bpm_state_snapshot() -> Dictionary:
+	var clips_snapshot: Array[Dictionary] = []
+
+	for clip in clips:
+		clips_snapshot.append(clip.duplicate(true))
+
+	return {
+		"bpm": bpm,
+		"clips": clips_snapshot
+	}
+
+func _apply_bpm_state_snapshot(state: Dictionary) -> void:
+	bpm = max(1.0, float(state.get("bpm", bpm)))
+
+	clips.clear()
+	for clip_data in state.get("clips", []):
+		if clip_data is Dictionary:
+			clips.append((clip_data as Dictionary).duplicate(true))
+
+	_emit_sequence_changed()
+	_emit_status_text()
+	_emit_selected_clip_changed()
+	queue_redraw()
+
+func _set_bpm_internal(value: float) -> void:
+	var new_bpm := max(1.0, value)
+	if is_equal_approx(bpm, new_bpm):
 		return
 
-	var target_track := _y_to_track_index(at_position.y)
-	var next_start := _snap_timeline_position(_x_to_timeline(at_position.x))
-	var dropped_clips: Array[Dictionary] = []
+	bpm = new_bpm
+	var clips_changed := _clamp_all_clip_lengths_for_current_tempo()
 
-	for audio_path in audio_paths:
-		var new_clip := _build_clip_data_at_position(audio_path, target_track, next_start)
-		if new_clip.is_empty():
-			continue
+	_emit_sequence_changed()
+	_emit_status_text()
 
-		dropped_clips.append(new_clip)
-		next_start = _snap_timeline_position(float(new_clip["start"]) + float(new_clip["length"]))
+	if clips_changed:
+		_emit_selected_clip_changed()
 
-	if dropped_clips.is_empty():
-		_show_blocked_action_feedback("No room to add dropped audio on this track.")
+	queue_redraw()
+
+func set_bpm(value: float) -> void:
+	var before_state := _build_bpm_state_snapshot()
+
+	_set_bpm_internal(value)
+
+	var after_state := _build_bpm_state_snapshot()
+	if before_state == after_state:
 		return
-
-	var insert_start_index := clips.size()
-	var new_selection: Array[int] = []
-	for i in range(dropped_clips.size()):
-		new_selection.append(insert_start_index + i)
 
 	if editor_undo_redo == null:
-		for i in range(dropped_clips.size()):
-			_insert_clip_at(insert_start_index + i, dropped_clips[i])
-		_set_selected_clip_indices(new_selection)
-		_ensure_clip_visible(new_selection.back())
+		_apply_bpm_state_snapshot(after_state)
 		return
 
-	editor_undo_redo.create_action("Drop Audio Clips" if dropped_clips.size() > 1 else "Drop Audio Clip")
-	for i in range(dropped_clips.size()):
-		editor_undo_redo.add_do_method(self, "_insert_clip_at", insert_start_index + i, dropped_clips[i])
-	for i in range(dropped_clips.size() - 1, -1, -1):
-		editor_undo_redo.add_undo_method(self, "_remove_clip_at", insert_start_index + i)
-	editor_undo_redo.add_do_method(self, "_set_selected_clip_indices", new_selection)
-	editor_undo_redo.add_undo_method(self, "_clear_selection")
+	_apply_bpm_state_snapshot(before_state)
+
+	editor_undo_redo.create_action("Change BPM")
+	editor_undo_redo.add_do_method(self, "_apply_bpm_state_snapshot", after_state)
+	editor_undo_redo.add_undo_method(self, "_apply_bpm_state_snapshot", before_state)
 	editor_undo_redo.commit_action()
-	_ensure_clip_visible(new_selection.back())
 
 func _gui_input(event: InputEvent) -> void:
 	_update_temporary_snap_override_from_event(event)
@@ -1188,7 +1238,6 @@ func _gui_input(event: InputEvent) -> void:
 					accept_event()
 					return
 
-
 func _process(delta: float) -> void:
 	if blocked_action_flash_time > 0.0:
 		blocked_action_flash_time = max(0.0, blocked_action_flash_time - delta)
@@ -1220,26 +1269,17 @@ func _process(delta: float) -> void:
 	elif is_dragging_clip:
 		_update_clip_drag(mouse_position)
 
+func _update_temporary_snap_override_from_event(event: InputEvent) -> void:
+	if event is InputEventMouseMotion:
+		var mouse_motion_event := event as InputEventMouseMotion
+		temporary_snap_override_active = mouse_motion_event.shift_pressed
+	elif event is InputEventMouseButton:
+		var mouse_button_event := event as InputEventMouseButton
+		temporary_snap_override_active = mouse_button_event.shift_pressed
+	elif event is InputEventKey:
+		var key_event := event as InputEventKey
+		temporary_snap_override_active = key_event.shift_pressed
 
-func _is_editing_blocked_by_playback(show_feedback: bool = false) -> bool:
-	if not is_playing:
-		return false
-
-	if show_feedback:
-		_show_blocked_action_feedback("Pause playback before editing.")
-
-	return true
-
-func _is_in_timeline_header(position: Vector2) -> bool:
-	return position.y >= 0.0 and position.y <= header_height and position.x >= track_label_width
-
-#Dragging
-
-func _snap_timeline_position(position: float) -> float:
-	if not _is_snap_active():
-		return position
-
-	return round(position)
 
 func _update_cursor_shape() -> void:
 	if is_resizing_clip or hovered_resize_clip_index != -1:
@@ -1287,40 +1327,6 @@ func _begin_clip_drag(clip_index: int, mouse_position: Vector2) -> void:
 	hovered_clip_index = -1
 	_update_cursor_shape()
 	queue_redraw()
-
-func prepare_next_clip_insertion_context() -> void:
-	var mouse_position := get_local_mouse_position()
-	var mouse_over_timeline := _is_mouse_over_timeline_lanes(mouse_position)
-
-	pending_clip_insertion_context = {
-		"selected_clip_index": selected_clip_index,
-		"playhead_position": playhead_position,
-		"mouse_over_timeline": mouse_over_timeline,
-		"mouse_track": _y_to_track_index(mouse_position.y) if mouse_over_timeline else 0
-	}
-
-func _get_default_clip_insertion_target(clip_length: float) -> Dictionary:
-	var mouse_position := get_local_mouse_position()
-
-	if selected_clip_index >= 0 and selected_clip_index < clips.size():
-		var selected_clip := clips[selected_clip_index]
-
-		if selected_clip.has("track") and selected_clip.has("start") and selected_clip.has("length"):
-			return {
-				"track": int(selected_clip["track"]),
-				"start": _snap_timeline_position(float(selected_clip["start"]) + float(selected_clip["length"]))
-			}
-
-	var playhead_track := 0
-
-	if _is_mouse_over_timeline_lanes(mouse_position):
-		playhead_track = _y_to_track_index(mouse_position.y)
-
-	return {
-		"track": playhead_track,
-		"start": _snap_timeline_position(playhead_position)
-	}
-
 
 func _update_clip_drag(mouse_position: Vector2) -> void:
 	if not is_dragging_clip or is_resizing_clip:
@@ -1421,8 +1427,6 @@ func _update_clip_drag(mouse_position: Vector2) -> void:
 	_emit_selected_clip_changed()
 	queue_redraw()
 
-
-
 func _end_clip_drag() -> void:
 	if not is_dragging_clip:
 		return
@@ -1446,7 +1450,6 @@ func _end_clip_drag() -> void:
 			editor_undo_redo.add_do_method(self, "_set_selected_clip_indices", dragged_selection)
 			editor_undo_redo.add_undo_method(self, "_set_selected_clip_indices", dragged_selection)
 			editor_undo_redo.commit_action()
-		
 		handled_multiselect_drag = true
 		drag_original_selected_clips.clear()
 
@@ -1489,9 +1492,170 @@ func _end_clip_drag() -> void:
 	_emit_selected_clip_changed()
 	queue_redraw()
 
+func _get_resize_handle_rect(clip: Dictionary) -> Rect2:
+	var clip_rect := _get_clip_rect(clip)
+	var handle_width := min(resize_handle_width, clip_rect.size.x)
 
-func _is_snap_active() -> bool:
-	return snap_enabled != temporary_snap_override_active
+	return Rect2(
+		clip_rect.end.x - handle_width,
+		clip_rect.position.y,
+		handle_width,
+		clip_rect.size.y
+	)
+
+func _get_resize_handle_clip_index_at_position(position: Vector2) -> int:
+	for i in range(clips.size() - 1, -1, -1):
+		var clip := clips[i]
+
+		if not clip.has("track") or not clip.has("start") or not clip.has("length"):
+			continue
+
+		var track_index: int = clip["track"]
+		var length: float = clip["length"]
+
+		if track_index < 0 or track_index >= track_count:
+			continue
+
+		if length <= 0.0:
+			continue
+
+		var handle_rect := _get_resize_handle_rect(clip)
+
+		if handle_rect.size.x <= 1.0 or handle_rect.size.y <= 1.0:
+			continue
+
+		if handle_rect.has_point(position):
+			return i
+
+	return -1
+
+func _update_hovered_resize_handle(position: Vector2) -> void:
+	var new_hovered_resize_clip_index := _get_resize_handle_clip_index_at_position(position)
+
+	if new_hovered_resize_clip_index == hovered_resize_clip_index:
+		return
+
+	hovered_resize_clip_index = new_hovered_resize_clip_index
+	_update_cursor_shape()
+	queue_redraw()
+
+func _begin_clip_resize(clip_index: int, mouse_position: Vector2) -> void:
+	if _is_editing_blocked_by_playback():
+		return
+
+	if clip_index < 0 or clip_index >= clips.size():
+		return
+	resize_start_mouse_position = mouse_position
+	var clip := clips[clip_index]
+
+	if not clip.has("start") or not clip.has("length"):
+		return
+	resize_original_clip_index = clip_index
+	resize_original_clip_data = clip.duplicate(true)
+
+	var clip_start: float = clip["start"]
+	var clip_length: float = clip["length"]
+	var clip_end := clip_start + clip_length
+	var mouse_timeline_position := _x_to_timeline(mouse_position.x)
+
+	is_resizing_clip = true
+	resized_clip_index = clip_index
+	resize_grab_offset = mouse_timeline_position - clip_end
+
+	is_dragging_clip = false
+	dragged_clip_index = -1
+	drag_grab_offset = 0.0
+
+	_set_single_selection(clip_index)
+	hovered_clip_index = -1
+	hovered_resize_clip_index = clip_index
+	_update_cursor_shape()
+	_emit_status_text()
+	_emit_selected_clip_changed()
+	queue_redraw()
+
+func _update_clip_resize(mouse_position: Vector2) -> void:
+	if not is_resizing_clip:
+		return
+
+	if resized_clip_index < 0 or resized_clip_index >= clips.size():
+		return
+
+	if mouse_position.distance_to(resize_start_mouse_position) < 4.0:
+		return
+
+	var clip := clips[resized_clip_index]
+
+	if not clip.has("start") or not clip.has("length"):
+		return
+
+	var start: float = clip["start"]
+	var track_index: int = clip["track"]
+	var mouse_timeline_position := _x_to_timeline(mouse_position.x)
+	var new_end := mouse_timeline_position - resize_grab_offset
+	new_end = _snap_timeline_position(new_end)
+
+	var min_end := start + min_clip_length
+	var max_length := _get_effective_max_clip_length(resized_clip_index, clip)
+	var max_end := start + max_length
+
+	new_end = clamp(new_end, min_end, max_end)
+	var new_length := new_end - start
+
+	clip["length"] = new_length
+	clips[resized_clip_index] = clip
+
+	_emit_status_text()
+	_emit_selected_clip_changed()
+	queue_redraw()
+
+
+func _end_clip_resize() -> void:
+	if not is_resizing_clip:
+		return
+
+	var should_register_undo := false
+	var final_clip_index := resize_original_clip_index
+	var before_clip: Dictionary = {}
+	var after_clip: Dictionary = {}
+
+	if resize_original_clip_index >= 0 and resize_original_clip_index < clips.size() and not resize_original_clip_data.is_empty():
+		var current_clip := clips[resize_original_clip_index]
+		if resize_original_clip_data != current_clip:
+			should_register_undo = true
+			before_clip = resize_original_clip_data.duplicate(true)
+			after_clip = current_clip.duplicate(true)
+
+	is_resizing_clip = false
+	resized_clip_index = -1
+	resize_grab_offset = 0.0
+	resize_start_mouse_position = Vector2.ZERO
+	temporary_snap_override_active = false
+	if should_register_undo and editor_undo_redo != null:
+		editor_undo_redo.create_action("Resize Clip")
+		editor_undo_redo.add_do_method(self, "_set_clip_data", final_clip_index, after_clip)
+		editor_undo_redo.add_undo_method(self, "_set_clip_data", final_clip_index, before_clip)
+		editor_undo_redo.commit_action()
+
+	resize_original_clip_index = -1
+	resize_original_clip_data = {}
+
+	_update_cursor_shape()
+	_emit_status_text()
+	_emit_selected_clip_changed()
+	queue_redraw()
+
+
+func prepare_next_clip_insertion_context() -> void:
+	var mouse_position := get_local_mouse_position()
+	var mouse_over_timeline := _is_mouse_over_timeline_lanes(mouse_position)
+
+	pending_clip_insertion_context = {
+		"selected_clip_index": selected_clip_index,
+		"playhead_position": playhead_position,
+		"mouse_over_timeline": mouse_over_timeline,
+		"mouse_track": _y_to_track_index(mouse_position.y) if mouse_over_timeline else 0
+	}
 
 func _build_new_clip_defaults(audio_path: String) -> Dictionary:
 	var clip_name := "New Clip"
@@ -1751,7 +1915,6 @@ func duplicate_selected_clip() -> void:
 	editor_undo_redo.commit_action()
 	_ensure_clip_visible(selected_clip_index)
 
-
 func copy_selected_clips() -> void:
 	var source_indices: Array[int] = []
 
@@ -1913,8 +2076,6 @@ func delete_selected_clip() -> void:
 		editor_undo_redo.add_undo_method(self, "_insert_clip_at", clip_index, clip_data)
 	editor_undo_redo.commit_action()
 
-
-
 func _nudge_selected_clip(amount: float, use_snap: bool) -> void:
 	if _is_editing_blocked_by_playback(true):
 		return
@@ -2058,7 +2219,6 @@ func _nudge_selected_clip(amount: float, use_snap: bool) -> void:
 		editor_undo_redo.add_undo_method(self, "_set_clip_data", selected_clip_index, before_clip)
 		editor_undo_redo.commit_action()
 
-
 func set_selected_clip_name(value: String) -> void:
 	if _is_editing_blocked_by_playback(true):
 		return
@@ -2129,18 +2289,6 @@ func set_selected_clip_length(value: float) -> void:
 	clip["length"] = clamp(value, min_clip_length, max_length)
 	_commit_selected_clip_change("Change Clip Length", clip)
 
-func _set_clip_data(clip_index: int, clip_data: Dictionary) -> void:
-	if clip_index < 0 or clip_index >= clips.size():
-		return
-
-	clips[clip_index] = clip_data.duplicate(true)
-	selected_clip_index = clip_index
-	selected_clip_indices = [selected_clip_index]
-	_emit_sequence_changed()
-	_emit_status_text()
-	_emit_selected_clip_changed()
-	queue_redraw()
-
 func set_selected_clip_audio_path(value: String) -> void:
 	if _is_editing_blocked_by_playback(true):
 		return
@@ -2201,6 +2349,18 @@ func _commit_selected_clip_change(action_name: String, updated_clip: Dictionary)
 	editor_undo_redo.add_undo_method(self, "_set_clip_data", clip_index, before_clip)
 	editor_undo_redo.commit_action()
 
+func _set_clip_data(clip_index: int, clip_data: Dictionary) -> void:
+	if clip_index < 0 or clip_index >= clips.size():
+		return
+
+	clips[clip_index] = clip_data.duplicate(true)
+	selected_clip_index = clip_index
+	selected_clip_indices = [selected_clip_index]
+	_emit_sequence_changed()
+	_emit_status_text()
+	_emit_selected_clip_changed()
+	queue_redraw()
+
 func _insert_clip_at(clip_index: int, clip_data: Dictionary) -> void:
 	clip_index = clamp(clip_index, 0, clips.size())
 	clips.insert(clip_index, clip_data.duplicate(true))
@@ -2238,261 +2398,6 @@ func _remove_clip_at(clip_index: int) -> void:
 	_emit_selected_clip_changed()
 	queue_redraw()
 
-
-func _get_scroll_container() -> ScrollContainer:
-	var parent_node := get_parent()
-
-	if parent_node is ScrollContainer:
-		return parent_node as ScrollContainer
-
-	return null
-
-func _get_max_horizontal_scroll(scroll_container: ScrollContainer) -> float:
-	return max(0.0, _get_total_width() - scroll_container.size.x)
-
-func _set_horizontal_scroll(value: float) -> void:
-	var scroll_container := _get_scroll_container()
-
-	if scroll_container == null:
-		return
-
-	var max_scroll := _get_max_horizontal_scroll(scroll_container)
-	scroll_container.scroll_horizontal = int(clamp(value, 0.0, max_scroll))
-
-func _ensure_rect_visible_horizontally(rect: Rect2, margin: float = 0.0) -> void:
-	var scroll_container := _get_scroll_container()
-
-	if scroll_container == null:
-		return
-
-	var visible_left := float(scroll_container.scroll_horizontal)
-	var visible_right := visible_left + scroll_container.size.x
-
-	var target_scroll := visible_left
-
-	if rect.position.x - margin < visible_left:
-		target_scroll = rect.position.x - margin
-	elif rect.end.x + margin > visible_right:
-		target_scroll = rect.end.x + margin - scroll_container.size.x
-
-	_set_horizontal_scroll(target_scroll)
-
-func _ensure_clip_visible(clip_index: int) -> void:
-	if clip_index < 0 or clip_index >= clips.size():
-		return
-
-	var clip := clips[clip_index]
-	if not clip.has("track") or not clip.has("start") or not clip.has("length"):
-		return
-
-	var rect := _get_clip_rect(clip)
-	_ensure_rect_visible_horizontally(rect, visible_scroll_margin)
-
-
-func _auto_scroll_during_drag(mouse_position: Vector2, delta: float) -> void:
-	var scroll_container := _get_scroll_container()
-
-	if scroll_container == null:
-		return
-
-	var visible_left := float(scroll_container.scroll_horizontal)
-	var visible_right := visible_left + scroll_container.size.x
-
-	var scroll_direction := 0.0
-	var strength := 0.0
-
-	if mouse_position.x < visible_left + auto_scroll_edge_threshold:
-		var distance_to_edge := (visible_left + auto_scroll_edge_threshold) - mouse_position.x
-		strength = clamp(distance_to_edge / auto_scroll_edge_threshold, 0.0, 1.0)
-		scroll_direction = -1.0
-	elif mouse_position.x > visible_right - auto_scroll_edge_threshold:
-		var distance_to_edge := mouse_position.x - (visible_right - auto_scroll_edge_threshold)
-		strength = clamp(distance_to_edge / auto_scroll_edge_threshold, 0.0, 1.0)
-		scroll_direction = 1.0
-
-	if scroll_direction == 0.0:
-		return
-
-	var scroll_amount := auto_scroll_speed * 60.0 * delta
-	scroll_amount *= lerp(0.35, 1.0, strength)
-
-	_set_horizontal_scroll(visible_left + (scroll_amount * scroll_direction))
-
-func _get_resize_handle_rect(clip: Dictionary) -> Rect2:
-	var clip_rect := _get_clip_rect(clip)
-	var handle_width := min(resize_handle_width, clip_rect.size.x)
-
-	return Rect2(
-		clip_rect.end.x - handle_width,
-		clip_rect.position.y,
-		handle_width,
-		clip_rect.size.y
-	)
-
-func _get_resize_handle_clip_index_at_position(position: Vector2) -> int:
-	for i in range(clips.size() - 1, -1, -1):
-		var clip := clips[i]
-
-		if not clip.has("track") or not clip.has("start") or not clip.has("length"):
-			continue
-
-		var track_index: int = clip["track"]
-		var length: float = clip["length"]
-
-		if track_index < 0 or track_index >= track_count:
-			continue
-
-		if length <= 0.0:
-			continue
-
-		var handle_rect := _get_resize_handle_rect(clip)
-
-		if handle_rect.size.x <= 1.0 or handle_rect.size.y <= 1.0:
-			continue
-
-		if handle_rect.has_point(position):
-			return i
-
-	return -1
-
-func _update_hovered_resize_handle(position: Vector2) -> void:
-	var new_hovered_resize_clip_index := _get_resize_handle_clip_index_at_position(position)
-
-	if new_hovered_resize_clip_index == hovered_resize_clip_index:
-		return
-
-	hovered_resize_clip_index = new_hovered_resize_clip_index
-	_update_cursor_shape()
-	queue_redraw()
-
-func _begin_clip_resize(clip_index: int, mouse_position: Vector2) -> void:
-	if _is_editing_blocked_by_playback():
-		return
-
-	if clip_index < 0 or clip_index >= clips.size():
-		return
-	resize_start_mouse_position = mouse_position
-	var clip := clips[clip_index]
-
-	if not clip.has("start") or not clip.has("length"):
-		return
-	resize_original_clip_index = clip_index
-	resize_original_clip_data = clip.duplicate(true)
-
-	var clip_start: float = clip["start"]
-	var clip_length: float = clip["length"]
-	var clip_end := clip_start + clip_length
-	var mouse_timeline_position := _x_to_timeline(mouse_position.x)
-
-	is_resizing_clip = true
-	resized_clip_index = clip_index
-	resize_grab_offset = mouse_timeline_position - clip_end
-
-	is_dragging_clip = false
-	dragged_clip_index = -1
-	drag_grab_offset = 0.0
-
-	_set_single_selection(clip_index)
-	hovered_clip_index = -1
-	hovered_resize_clip_index = clip_index
-	_update_cursor_shape()
-	_emit_status_text()
-	_emit_selected_clip_changed()
-	queue_redraw()
-
-func _update_clip_resize(mouse_position: Vector2) -> void:
-	if not is_resizing_clip:
-		return
-
-	if resized_clip_index < 0 or resized_clip_index >= clips.size():
-		return
-
-	if mouse_position.distance_to(resize_start_mouse_position) < 4.0:
-		return
-
-	var clip := clips[resized_clip_index]
-
-	if not clip.has("start") or not clip.has("length"):
-		return
-
-	var start: float = clip["start"]
-	var track_index: int = clip["track"]
-	var mouse_timeline_position := _x_to_timeline(mouse_position.x)
-	var new_end := mouse_timeline_position - resize_grab_offset
-	new_end = _snap_timeline_position(new_end)
-
-	var min_end := start + min_clip_length
-	var max_length := _get_effective_max_clip_length(resized_clip_index, clip)
-	var max_end := start + max_length
-
-	new_end = clamp(new_end, min_end, max_end)
-	var new_length := new_end - start
-
-	clip["length"] = new_length
-	clips[resized_clip_index] = clip
-
-	_emit_status_text()
-	_emit_selected_clip_changed()
-	queue_redraw()
-
-
-func _end_clip_resize() -> void:
-	if not is_resizing_clip:
-		return
-
-	var should_register_undo := false
-	var final_clip_index := resize_original_clip_index
-	var before_clip: Dictionary = {}
-	var after_clip: Dictionary = {}
-
-	if resize_original_clip_index >= 0 and resize_original_clip_index < clips.size() and not resize_original_clip_data.is_empty():
-		var current_clip := clips[resize_original_clip_index]
-		if resize_original_clip_data != current_clip:
-			should_register_undo = true
-			before_clip = resize_original_clip_data.duplicate(true)
-			after_clip = current_clip.duplicate(true)
-
-	is_resizing_clip = false
-	resized_clip_index = -1
-	resize_grab_offset = 0.0
-	resize_start_mouse_position = Vector2.ZERO
-	temporary_snap_override_active = false
-	if should_register_undo and editor_undo_redo != null:
-		editor_undo_redo.create_action("Resize Clip")
-		editor_undo_redo.add_do_method(self, "_set_clip_data", final_clip_index, after_clip)
-		editor_undo_redo.add_undo_method(self, "_set_clip_data", final_clip_index, before_clip)
-		editor_undo_redo.commit_action()
-
-	resize_original_clip_index = -1
-	resize_original_clip_data = {}
-
-	_update_cursor_shape()
-	_emit_status_text()
-	_emit_selected_clip_changed()
-	queue_redraw()
-
-
-func _get_selected_clip_data() -> Dictionary:
-	if selected_clip_index < 0 or selected_clip_index >= clips.size():
-		return {}
-
-	return clips[selected_clip_index].duplicate(true)
-
-func _emit_selected_clip_changed() -> void:
-	if selected_clip_indices.size() == 1:
-		selected_clip_changed.emit(selected_clip_index, _get_selected_clip_data())
-	else:
-		selected_clip_changed.emit(-1, {})
-
-func clear_selected_clip() -> void:
-	if selected_clip_index == -1:
-		return
-
-	selected_clip_index = -1
-	selected_clip_indices.clear()
-	_emit_status_text()
-	_emit_selected_clip_changed()
-	queue_redraw()
 
 func _add_track_internal() -> void:
 	track_count += 1
@@ -2542,7 +2447,6 @@ func _remove_track_internal(track_index: int) -> void:
 	track_mutes.remove_at(track_index)
 	track_volumes.remove_at(track_index)
 	track_count -= 1
-
 
 func remove_track(track_index: int) -> void:
 	if _is_editing_blocked_by_playback(true):
@@ -2657,72 +2561,136 @@ func duplicate_track(track_index: int) -> void:
 		_duplicate_track_internal(track_index)
 	)
 
-func _get_subdivisions_per_second() -> float:
-	return (bpm / 60.0) * float(subdivisions_per_beat)
 
-func _set_playing(value: bool) -> void:
-	if is_playing == value:
-		return
-	if value:
-		_cancel_active_edit_interaction_state()
-	is_playing = value
-	playback_state_changed.emit(is_playing)
-	queue_redraw()
+func _get_scroll_container() -> ScrollContainer:
+	var parent_node := get_parent()
 
-func play() -> void:
-	_set_playing(true)
+	if parent_node is ScrollContainer:
+		return parent_node as ScrollContainer
 
-func pause() -> void:
-	_set_playing(false)
+	return null
 
-func _set_bpm_internal(value: float) -> void:
-	var new_bpm := max(1.0, value)
-	if is_equal_approx(bpm, new_bpm):
+func _get_max_horizontal_scroll(scroll_container: ScrollContainer) -> float:
+	return max(0.0, _get_total_width() - scroll_container.size.x)
+
+func _set_horizontal_scroll(value: float) -> void:
+	var scroll_container := _get_scroll_container()
+
+	if scroll_container == null:
 		return
 
-	bpm = new_bpm
-	var clips_changed := _clamp_all_clip_lengths_for_current_tempo()
+	var max_scroll := _get_max_horizontal_scroll(scroll_container)
+	scroll_container.scroll_horizontal = int(clamp(value, 0.0, max_scroll))
 
-	_emit_sequence_changed()
-	_emit_status_text()
+func _ensure_rect_visible_horizontally(rect: Rect2, margin: float = 0.0) -> void:
+	var scroll_container := _get_scroll_container()
 
-	if clips_changed:
-		_emit_selected_clip_changed()
-
-	queue_redraw()
-
-func set_bpm(value: float) -> void:
-	var before_state := _build_bpm_state_snapshot()
-
-	_set_bpm_internal(value)
-
-	var after_state := _build_bpm_state_snapshot()
-	if before_state == after_state:
+	if scroll_container == null:
 		return
+
+	var visible_left := float(scroll_container.scroll_horizontal)
+	var visible_right := visible_left + scroll_container.size.x
+
+	var target_scroll := visible_left
+
+	if rect.position.x - margin < visible_left:
+		target_scroll = rect.position.x - margin
+	elif rect.end.x + margin > visible_right:
+		target_scroll = rect.end.x + margin - scroll_container.size.x
+
+	_set_horizontal_scroll(target_scroll)
+
+func _ensure_clip_visible(clip_index: int) -> void:
+	if clip_index < 0 or clip_index >= clips.size():
+		return
+
+	var clip := clips[clip_index]
+	if not clip.has("track") or not clip.has("start") or not clip.has("length"):
+		return
+
+	var rect := _get_clip_rect(clip)
+	_ensure_rect_visible_horizontally(rect, visible_scroll_margin)
+
+func _auto_scroll_during_drag(mouse_position: Vector2, delta: float) -> void:
+	var scroll_container := _get_scroll_container()
+
+	if scroll_container == null:
+		return
+
+	var visible_left := float(scroll_container.scroll_horizontal)
+	var visible_right := visible_left + scroll_container.size.x
+
+	var scroll_direction := 0.0
+	var strength := 0.0
+
+	if mouse_position.x < visible_left + auto_scroll_edge_threshold:
+		var distance_to_edge := (visible_left + auto_scroll_edge_threshold) - mouse_position.x
+		strength = clamp(distance_to_edge / auto_scroll_edge_threshold, 0.0, 1.0)
+		scroll_direction = -1.0
+	elif mouse_position.x > visible_right - auto_scroll_edge_threshold:
+		var distance_to_edge := mouse_position.x - (visible_right - auto_scroll_edge_threshold)
+		strength = clamp(distance_to_edge / auto_scroll_edge_threshold, 0.0, 1.0)
+		scroll_direction = 1.0
+
+	if scroll_direction == 0.0:
+		return
+
+	var scroll_amount := auto_scroll_speed * 60.0 * delta
+	scroll_amount *= lerp(0.35, 1.0, strength)
+
+	_set_horizontal_scroll(visible_left + (scroll_amount * scroll_direction))
+
+
+func _can_drop_data(at_position: Vector2, data: Variant) -> bool:
+	if _is_editing_blocked_by_playback():
+		return false
+	if not _is_mouse_over_timeline_lanes(at_position):
+		return false
+	return not _extract_audio_paths_from_drop_data(data).is_empty()
+
+func _drop_data(at_position: Vector2, data: Variant) -> void:
+	var audio_paths := _extract_audio_paths_from_drop_data(data)
+	if audio_paths.is_empty():
+		return
+
+	var target_track := _y_to_track_index(at_position.y)
+	var next_start := _snap_timeline_position(_x_to_timeline(at_position.x))
+	var dropped_clips: Array[Dictionary] = []
+
+	for audio_path in audio_paths:
+		var new_clip := _build_clip_data_at_position(audio_path, target_track, next_start)
+		if new_clip.is_empty():
+			continue
+
+		dropped_clips.append(new_clip)
+		next_start = _snap_timeline_position(float(new_clip["start"]) + float(new_clip["length"]))
+
+	if dropped_clips.is_empty():
+		_show_blocked_action_feedback("No room to add dropped audio on this track.")
+		return
+
+	var insert_start_index := clips.size()
+	var new_selection: Array[int] = []
+	for i in range(dropped_clips.size()):
+		new_selection.append(insert_start_index + i)
 
 	if editor_undo_redo == null:
-		_apply_bpm_state_snapshot(after_state)
+		for i in range(dropped_clips.size()):
+			_insert_clip_at(insert_start_index + i, dropped_clips[i])
+		_set_selected_clip_indices(new_selection)
+		_ensure_clip_visible(new_selection.back())
 		return
 
-	_apply_bpm_state_snapshot(before_state)
-
-	editor_undo_redo.create_action("Change BPM")
-	editor_undo_redo.add_do_method(self, "_apply_bpm_state_snapshot", after_state)
-	editor_undo_redo.add_undo_method(self, "_apply_bpm_state_snapshot", before_state)
+	editor_undo_redo.create_action("Drop Audio Clips" if dropped_clips.size() > 1 else "Drop Audio Clip")
+	for i in range(dropped_clips.size()):
+		editor_undo_redo.add_do_method(self, "_insert_clip_at", insert_start_index + i, dropped_clips[i])
+	for i in range(dropped_clips.size() - 1, -1, -1):
+		editor_undo_redo.add_undo_method(self, "_remove_clip_at", insert_start_index + i)
+	editor_undo_redo.add_do_method(self, "_set_selected_clip_indices", new_selection)
+	editor_undo_redo.add_undo_method(self, "_clear_selection")
 	editor_undo_redo.commit_action()
+	_ensure_clip_visible(new_selection.back())
 
-func _update_temporary_snap_override_from_event(event: InputEvent) -> void:
-	if event is InputEventMouseMotion:
-		var mouse_motion_event := event as InputEventMouseMotion
-		temporary_snap_override_active = mouse_motion_event.shift_pressed
-	elif event is InputEventMouseButton:
-		var mouse_button_event := event as InputEventMouseButton
-		temporary_snap_override_active = mouse_button_event.shift_pressed
-	elif event is InputEventKey:
-		var key_event := event as InputEventKey
-		temporary_snap_override_active = key_event.shift_pressed
-
-#Drawing rectangles
 
 func _draw() -> void:
 	_draw_background()
