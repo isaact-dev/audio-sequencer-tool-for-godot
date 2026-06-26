@@ -72,6 +72,10 @@ var track_names: Array[String] = []
 var track_mutes: Array[bool] = []
 var track_volumes: Array[float] = []
 var track_colors: Array[Color] = []
+var default_audio_bus: StringName = &"Master"
+var track_bus_overrides: Dictionary = {}
+var track_effect_chains: Dictionary = {}
+var track_groups: Dictionary = {}
 
 var selected_clip_outline_color := Color(1.0, 0.9, 0.35, 1.0)
 var selected_clip_overlay_color := Color(1.0, 1.0, 1.0, 0.08)
@@ -357,6 +361,45 @@ func set_track_volume(track_index: int, value: float) -> void:
 	_commit_track_state_change("Set Track Volume", func() -> void:
 		_set_track_volume_internal(track_index, value)
 	)
+
+func get_default_audio_bus() -> StringName:
+	return default_audio_bus
+
+func set_default_audio_bus(value: StringName) -> void:
+	if default_audio_bus == value:
+		return
+
+	default_audio_bus = value
+	_emit_sequence_changed()
+
+func get_track_bus_override(track_index: int) -> StringName:
+	if track_bus_overrides.has(track_index):
+		return StringName(str(track_bus_overrides[track_index]))
+
+	return &""
+
+func set_track_bus_override(track_index: int, bus_name: StringName) -> void:
+	if track_index < 0 or track_index >= track_count:
+		return
+
+	if bus_name.is_empty():
+		if track_bus_overrides.has(track_index):
+			track_bus_overrides.erase(track_index)
+			_emit_sequence_changed()
+		return
+
+	if StringName(str(track_bus_overrides.get(track_index, &""))) == bus_name:
+		return
+
+	track_bus_overrides[track_index] = bus_name
+	_emit_sequence_changed()
+
+func get_track_groups() -> Dictionary:
+	return track_groups.duplicate(true)
+
+func set_track_groups(value: Dictionary) -> void:
+	track_groups = value.duplicate(true)
+	_emit_sequence_changed()
 
 func _build_track_state_snapshot() -> Dictionary:
 	var clips_snapshot: Array[Dictionary] = []
@@ -763,6 +806,10 @@ func get_sequence_data() -> Dictionary:
 		"track_names": track_names.duplicate(),
 		"track_mutes": track_mutes.duplicate(),
 		"track_volumes": track_volumes.duplicate(),
+		"default_audio_bus": str(default_audio_bus),
+		"track_bus_overrides": track_bus_overrides.duplicate(true),
+		"track_effect_chains": track_effect_chains.duplicate(true),
+		"track_groups": track_groups.duplicate(true),
 		"clips": serialized_clips
 	}
 
@@ -806,6 +853,16 @@ func load_sequence_data(data: Dictionary) -> void:
 		for volume in loaded_track_volumes:
 			track_volumes.append(max(0.0, float(volume)))
 	_ensure_track_names_size()
+	default_audio_bus = StringName(str(data.get("default_audio_bus", default_audio_bus)))
+
+	var loaded_track_bus_overrides = data.get("track_bus_overrides", {})
+	track_bus_overrides = loaded_track_bus_overrides.duplicate(true) if loaded_track_bus_overrides is Dictionary else {}
+
+	var loaded_track_effect_chains = data.get("track_effect_chains", {})
+	track_effect_chains = loaded_track_effect_chains.duplicate(true) if loaded_track_effect_chains is Dictionary else {}
+
+	var loaded_track_groups = data.get("track_groups", {})
+	track_groups = loaded_track_groups.duplicate(true) if loaded_track_groups is Dictionary else {}
 
 	clips.clear()
 
@@ -850,8 +907,15 @@ func create_new_sequence(new_bars: int, new_beats_per_bar: int, new_subdivisions
 		"bars": max(1, new_bars),
 		"beats_per_bar": max(1, new_beats_per_bar),
 		"subdivisions_per_beat": max(1, new_subdivisions_per_beat),
+		"bpm": bpm,
 		"track_count": track_count,
 		"track_names": [],
+		"track_mutes": [],
+		"track_volumes": [],
+		"default_audio_bus": "Master",
+		"track_bus_overrides": {},
+		"track_effect_chains": {},
+		"track_groups": {},
 		"clips": []
 	})
 
