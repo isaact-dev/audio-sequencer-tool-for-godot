@@ -656,9 +656,12 @@ func _get_clip_max_length_from_audio(clip: Dictionary) -> float:
 	var audio_length_seconds := audio_stream.get_length()
 	if audio_length_seconds <= 0.0:
 		return INF
-
+	var source_start_offset_seconds := max(0.0, float(clip.get("source_start_offset_seconds", 0.0)))
+	var remaining_audio_seconds := max(0.0, audio_length_seconds - source_start_offset_seconds)
+	if remaining_audio_seconds <= 0.0:
+		return min_clip_length
 	var playback_speed := max(0.001, float(clip.get("playback_speed", 1.0)))
-	return max(min_clip_length, (audio_length_seconds * _get_subdivisions_per_second()) / playback_speed)
+	return max(min_clip_length, (remaining_audio_seconds * _get_subdivisions_per_second()) / playback_speed)
 
 func _get_effective_max_clip_length(clip_index: int, clip: Dictionary) -> float:
 	if not clip.has("track") or not clip.has("start"):
@@ -791,6 +794,7 @@ func get_sequence_data() -> Dictionary:
 			"length": float(clip.get("length", min_clip_length)),
 			"name": str(clip.get("name", "Clip")),
 			"audio_path": str(clip.get("audio_path", "")),
+			"source_start_offset_seconds": max(0.0, float(clip.get("source_start_offset_seconds", 0.0))),
 			"playback_speed": float(clip.get("playback_speed", 1.0)),
 			"volume": float(clip.get("volume", 1.0))
 		}
@@ -877,6 +881,7 @@ func load_sequence_data(data: Dictionary) -> void:
 			var clip_length := max(min_clip_length, float(loaded_clip.get("length", min_clip_length)))
 			var clip_playback_speed := max(0.001, float(loaded_clip.get("playback_speed", 1.0)))
 			var clip_volume := max(0.0, float(loaded_clip.get("volume", 1.0)))
+			var clip_source_start_offset_seconds := max(0.0, float(loaded_clip.get("source_start_offset_seconds", 0.0)))
 
 			var clip: Dictionary = {
 				"track": clip_track,
@@ -884,6 +889,7 @@ func load_sequence_data(data: Dictionary) -> void:
 				"length": clip_length,
 				"name": str(loaded_clip.get("name", "Clip")),
 				"audio_path": str(loaded_clip.get("audio_path", "")),
+				"source_start_offset_seconds": clip_source_start_offset_seconds,
 				"playback_speed": clip_playback_speed,
 				"volume": clip_volume
 			}
@@ -1778,6 +1784,7 @@ func _build_clip_data_at_position(audio_path: String, track_index: int, desired_
 		"length": clip_length,
 		"name": clip_name,
 		"audio_path": audio_path,
+		"source_start_offset_seconds": 0.0,
 		"playback_speed": 1.0,
 		"volume": 1.0
 	}
@@ -2403,6 +2410,22 @@ func set_selected_clip_volume(value: float) -> void:
 	var clip := clips[selected_clip_index].duplicate(true)
 	clip["volume"] = max(0.0, value)
 	_commit_selected_clip_change("Set Clip Volume", clip)
+
+func set_selected_clip_source_start_offset_seconds(value: float) -> void:
+	if _is_editing_blocked_by_playback(true):
+		return
+	if selected_clip_index < 0 or selected_clip_index >= clips.size():
+		return
+
+	var clip := clips[selected_clip_index].duplicate(true)
+	clip["source_start_offset_seconds"] = max(0.0, value)
+	clip["length"] = clamp(
+		float(clip.get("length", min_clip_length)),
+		min_clip_length,
+		_get_effective_max_clip_length(selected_clip_index, clip)
+	)
+
+	_commit_selected_clip_change("Set Clip Source Start Offset", clip)
 
 func _commit_selected_clip_change(action_name: String, updated_clip: Dictionary) -> void:
 	if selected_clip_index < 0 or selected_clip_index >= clips.size():

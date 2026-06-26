@@ -114,6 +114,7 @@ func load_from_dictionary(data: Dictionary) -> void:
 				"length": clip_length,
 				"name": str(loaded_clip.get("name", "Clip")),
 				"audio_path": str(loaded_clip.get("audio_path", "")),
+				"source_start_offset_seconds": max(0.0, float(loaded_clip.get("source_start_offset_seconds", 0.0))),
 				"playback_speed": max(0.001, float(loaded_clip.get("playback_speed", 1.0))),
 				"volume": max(0.0, float(loaded_clip.get("volume", 1.0)))
 			})

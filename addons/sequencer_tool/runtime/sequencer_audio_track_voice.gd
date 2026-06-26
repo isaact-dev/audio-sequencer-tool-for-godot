@@ -178,6 +178,9 @@ func _get_clip_offset_seconds(clip: Dictionary, playhead_position: float, playba
 	var offset_subdivisions := max(0.0, playhead_position - clip_start)
 	return (offset_subdivisions / subdivisions_per_second) * max(0.001, playback_pitch_scale)
 
+func _get_clip_source_start_offset_seconds(clip: Dictionary) -> float:
+	return max(0.0, float(clip.get("source_start_offset_seconds", 0.0)))
+
 func _get_clip_remaining_duration_seconds(clip: Dictionary, playhead_position: float) -> float:
 	var subdivisions_per_second := _get_subdivisions_per_second()
 	if subdivisions_per_second <= 0.0:
@@ -300,7 +303,7 @@ func _play_clip(
 
 	var clip_playback_speed := max(0.001, float(clip.get("playback_speed", 1.0)))
 	var playback_pitch_scale = clip_playback_speed * get_pitch_scale_multiplier()
-	var resolved_start_offset_seconds := max(0.0, start_offset_seconds)
+	var resolved_start_offset_seconds = _get_clip_source_start_offset_seconds(clip) + max(0.0, start_offset_seconds)
 
 	var resolved_duration_seconds := preview_duration_seconds
 	if resolved_duration_seconds < 0.0:

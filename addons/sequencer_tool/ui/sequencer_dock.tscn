@@ -140,6 +140,16 @@ layout_mode = 2
 size_flags_horizontal = 8
 text = "..."
 
+[node name="ClipSourceStartOffsetLabel" type="Label" parent="HSplitContainer/SettingsHost/ClipSettings" unique_id=185300507]
+layout_mode = 2
+text = "Source Start Offset (s)"
+
+[node name="ClipSourceStartOffsetSpin" type="SpinBox" parent="HSplitContainer/SettingsHost/ClipSettings" unique_id=2047905243]
+layout_mode = 2
+max_value = 9999.0
+step = 0.01
+value = 1.0
+
 [node name="ClipPlaybackSpeedLabel" type="Label" parent="HSplitContainer/SettingsHost/ClipSettings" unique_id=212441622]
 layout_mode = 2
 text = "Playback Speed"
@@ -420,6 +430,7 @@ metadata/_custom_type_script = "uid://ct22eaxo3fdn8"
 [connection signal="focus_exited" from="HSplitContainer/SettingsHost/ClipSettings/ClipSourceRow/ClipSourceEdit" to="." method="_on_clip_source_edit_focus_exited"]
 [connection signal="text_submitted" from="HSplitContainer/SettingsHost/ClipSettings/ClipSourceRow/ClipSourceEdit" to="." method="_on_clip_source_edit_text_submitted"]
 [connection signal="pressed" from="HSplitContainer/SettingsHost/ClipSettings/ClipSourceRow/ClipSourcePickButton" to="." method="_on_clip_source_pick_button_pressed"]
+[connection signal="value_changed" from="HSplitContainer/SettingsHost/ClipSettings/ClipSourceStartOffsetSpin" to="." method="_on_clip_source_start_offset_spin_value_changed"]
 [connection signal="value_changed" from="HSplitContainer/SettingsHost/ClipSettings/ClipPlaybackSpeedSpin" to="." method="_on_clip_playback_speed_spin_value_changed"]
 [connection signal="value_changed" from="HSplitContainer/SettingsHost/ClipSettings/ClipVolumeSpin" to="." method="_on_clip_volume_spin_value_changed"]
 [connection signal="value_changed" from="HSplitContainer/SettingsHost/ClipSettings/ClipTrackSpin" to="." method="_on_clip_track_spin_value_changed"]

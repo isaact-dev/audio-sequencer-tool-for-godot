@@ -322,9 +322,9 @@ func _refresh_internal_track_voices() -> void:
 		_internal_track_voice_volumes.erase(existing_track_index)
 		_internal_track_voice_enabled.erase(existing_track_index)
 
-		for track_index in wanted_track_indices:
-				_internal_track_voice_enabled[track_index] = true
-				_ensure_internal_track_voice(track_index, 1.0)
+	for track_index in wanted_track_indices:
+			_internal_track_voice_enabled[track_index] = true
+			_ensure_internal_track_voice(track_index, 1.0)
 
 func _seek_internal_track_voices(position: float, trigger_active_clip: bool = false) -> void:
 	for track_index in _internal_track_voices.keys():

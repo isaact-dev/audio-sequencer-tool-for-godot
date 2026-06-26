@@ -61,6 +61,9 @@ func _get_clip_offset_seconds(clip: Dictionary, playhead_position: float) -> flo
 
 	return (offset_subdivisions / subdivisions_per_second) * playback_speed
 
+func _get_clip_source_start_offset_seconds(clip: Dictionary) -> float:
+	return max(0.0, float(clip.get("source_start_offset_seconds", 0.0)))
+
 func _get_clip_remaining_preview_duration_seconds(clip: Dictionary, playhead_position: float) -> float:
 	var subdivisions_per_second := _get_timeline_subdivisions_per_second()
 	if subdivisions_per_second <= 0.0:
@@ -385,7 +388,7 @@ func _preview_clip(clip_index: int, clip: Dictionary, start_offset_seconds: floa
 	var final_volume := _get_preview_linear_volume(track_index, clip_index, clip_volume)
 
 	var playback_speed := max(0.001, float(clip.get("playback_speed", 1.0)))
-	var resolved_start_offset_seconds := max(0.0, start_offset_seconds)
+	var resolved_start_offset_seconds = _get_clip_source_start_offset_seconds(clip) + max(0.0, start_offset_seconds)
 
 	var resolved_preview_duration_seconds := preview_duration_seconds
 	if resolved_preview_duration_seconds < 0.0:

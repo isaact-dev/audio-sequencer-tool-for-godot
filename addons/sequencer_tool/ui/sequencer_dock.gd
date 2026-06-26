@@ -44,6 +44,7 @@ extends VBoxContainer
 @onready var pick_audio_dialog = $PickAudioDialog
 @onready var playback_speed_spin = $HSplitContainer/SettingsHost/ClipSettings/ClipPlaybackSpeedSpin
 @onready var audio_preview_controller = $AudioPreviewController
+@onready var source_start_offset_spin = $HSplitContainer/SettingsHost/ClipSettings/ClipSourceStartOffsetSpin
 
 var editor_undo_redo: EditorUndoRedoManager = null
 
@@ -162,6 +163,7 @@ func _clear_clip_settings_ui() -> void:
 	track_spin.value = track_spin.min_value
 	start_spin.value = start_spin.min_value
 	length_spin.value = length_spin.min_value
+	source_start_offset_spin.value = 0.0
 	volume_spin.value = 1.0
 	playback_speed_spin.value = 1.0
 	delete_clip_button.disabled = true
@@ -176,6 +178,7 @@ func _sync_clip_settings_ui(clip_index: int, clip_data: Dictionary) -> void:
 		track_spin.value = track_spin.min_value
 		start_spin.value = start_spin.min_value
 		length_spin.value = length_spin.min_value
+		source_start_offset_spin.value = 0.0
 		playback_speed_spin.value = 1.0
 		volume_spin.value = 1.0
 	else:
@@ -185,6 +188,7 @@ func _sync_clip_settings_ui(clip_index: int, clip_data: Dictionary) -> void:
 		var clip_start := float(clip_data.get("start", 0.0))
 		var max_length = timeline.get_clip_max_length(clip_index)
 		var clip_playback_speed := float(clip_data.get("playback_speed", 1.0))
+		var clip_source_start_offset_seconds := max(0.0, float(clip_data.get("source_start_offset_seconds", 0.0)))
 		var clip_volume := float(clip_data.get("volume", 1.0))
 		var clip_name := str(clip_data.get("name", ""))
 		var clip_audio_path := str(clip_data.get("audio_path", ""))
@@ -211,6 +215,8 @@ func _sync_clip_settings_ui(clip_index: int, clip_data: Dictionary) -> void:
 			playback_speed_spin.value = clip_playback_speed
 		if volume_spin.value != clip_volume:
 			volume_spin.value = clip_volume
+		if source_start_offset_spin.value != clip_source_start_offset_seconds:
+			source_start_offset_spin.value = clip_source_start_offset_seconds
 	_updating_clip_settings_ui = false
 
 
@@ -238,6 +244,7 @@ func _refresh_playback_locked_ui() -> void:
 	track_spin.editable = not playback_locked
 	start_spin.editable = not playback_locked
 	length_spin.editable = not playback_locked
+	source_start_offset_spin.editable = not playback_locked
 
 	volume_spin.editable = true
 
@@ -775,6 +782,11 @@ func _on_clip_length_spin_value_changed(value: float) -> void:
 	if _updating_clip_settings_ui:
 		return
 	timeline.set_selected_clip_length(value)
+
+func _on_clip_source_start_offset_spin_value_changed(value: float) -> void:
+	if _updating_clip_settings_ui:
+		return
+	timeline.set_selected_clip_source_start_offset_seconds(value)
 
 func _on_clip_close_button_pressed() -> void:
 	timeline.clear_selected_clip()
