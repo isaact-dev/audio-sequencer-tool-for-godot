@@ -121,6 +121,7 @@ var pending_clip_insertion_context: Dictionary = {}
 var clip_clipboard: Array[Dictionary] = []
 
 
+#Lifecycle
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	focus_mode = Control.FOCUS_ALL
@@ -141,6 +142,7 @@ func set_editor_undo_redo(value: EditorUndoRedoManager) -> void:
 	editor_undo_redo = value
 
 
+#Signal handlers
 func _emit_sequence_changed() -> void:
 	sequence_changed.emit()
 
@@ -207,6 +209,7 @@ func _clear_action_feedback() -> void:
 	action_feedback_text = ""
 
 
+#Timeline geometry
 func _get_total_subdivisions() -> int:
 	return bars * beats_per_bar * subdivisions_per_beat
 
@@ -264,6 +267,7 @@ func _is_snap_active() -> bool:
 	return snap_enabled != temporary_snap_override_active
 
 
+#Track data helpers
 func _create_default_track_name(track_index: int) -> String:
 	return "Track %d" % [track_index + 1]
 
@@ -473,6 +477,7 @@ func _apply_bars_value(value: int) -> void:
 	queue_redraw()
 
 
+#Clip geometry, constraints and placement helpers
 func _get_clip_rect(clip: Dictionary) -> Rect2:
 	var track_index: int = clip["track"]
 	var start: float = clip["start"]
@@ -732,6 +737,7 @@ func _extract_audio_paths_from_drop_data(data: Variant) -> Array[String]:
 	return audio_paths
 
 
+#Sequence serialization
 func get_sequence_data() -> Dictionary:
 	var serialized_clips: Array[Dictionary] = []
 
@@ -850,6 +856,7 @@ func create_new_sequence(new_bars: int, new_beats_per_bar: int, new_subdivisions
 	})
 
 
+#Selection helpers
 func _reset_selection_and_interaction_state() -> void:
 	selected_clip_indices.clear()
 	selected_clip_index = -1
@@ -951,6 +958,7 @@ func clear_selected_clip() -> void:
 	queue_redraw()
 
 
+#Playback
 func set_playhead_position(value: float) -> void:
 	playhead_position = clamp(value, 0.0, float(_get_total_subdivisions()))
 	queue_redraw()
@@ -1077,6 +1085,8 @@ func set_bpm(value: float) -> void:
 	editor_undo_redo.add_undo_method(self, "_apply_bpm_state_snapshot", before_state)
 	editor_undo_redo.commit_action()
 
+
+#Input/process
 func _gui_input(event: InputEvent) -> void:
 	_update_temporary_snap_override_from_event(event)
 	if event is InputEventKey:
@@ -1281,6 +1291,7 @@ func _update_temporary_snap_override_from_event(event: InputEvent) -> void:
 		temporary_snap_override_active = key_event.shift_pressed
 
 
+#Drag and resize
 func _update_cursor_shape() -> void:
 	if is_resizing_clip or hovered_resize_clip_index != -1:
 		mouse_default_cursor_shape = Control.CURSOR_HSIZE
@@ -1609,7 +1620,6 @@ func _update_clip_resize(mouse_position: Vector2) -> void:
 	_emit_selected_clip_changed()
 	queue_redraw()
 
-
 func _end_clip_resize() -> void:
 	if not is_resizing_clip:
 		return
@@ -1646,6 +1656,7 @@ func _end_clip_resize() -> void:
 	queue_redraw()
 
 
+#Clip creation/editing
 func prepare_next_clip_insertion_context() -> void:
 	var mouse_position := get_local_mouse_position()
 	var mouse_over_timeline := _is_mouse_over_timeline_lanes(mouse_position)
@@ -2399,6 +2410,7 @@ func _remove_clip_at(clip_index: int) -> void:
 	queue_redraw()
 
 
+#Track commands
 func _add_track_internal() -> void:
 	track_count += 1
 	track_names.append(_create_default_track_name(track_count - 1))
@@ -2562,6 +2574,7 @@ func duplicate_track(track_index: int) -> void:
 	)
 
 
+#Scroll helpers
 func _get_scroll_container() -> ScrollContainer:
 	var parent_node := get_parent()
 
@@ -2641,6 +2654,7 @@ func _auto_scroll_during_drag(mouse_position: Vector2, delta: float) -> void:
 	_set_horizontal_scroll(visible_left + (scroll_amount * scroll_direction))
 
 
+#Drop handling
 func _can_drop_data(at_position: Vector2, data: Variant) -> bool:
 	if _is_editing_blocked_by_playback():
 		return false
@@ -2692,6 +2706,7 @@ func _drop_data(at_position: Vector2, data: Variant) -> void:
 	_ensure_clip_visible(new_selection.back())
 
 
+#Drawing
 func _draw() -> void:
 	_draw_background()
 	_draw_header()
