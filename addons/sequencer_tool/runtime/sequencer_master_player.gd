@@ -121,7 +121,7 @@ func register_track_player(track_player: Node) -> void:
 	track_player_registered.emit(track_player)
 
 	if track_player.has_method("refresh_runtime_setup"):
-			track_player.refresh_runtime_setup()
+		track_player.refresh_runtime_setup()
 
 func unregister_track_player(track_player: Node) -> void:
 	if track_player == null:
@@ -323,8 +323,8 @@ func _refresh_internal_track_voices() -> void:
 		_internal_track_voice_enabled.erase(existing_track_index)
 
 	for track_index in wanted_track_indices:
-			_internal_track_voice_enabled[track_index] = true
-			_ensure_internal_track_voice(track_index, 1.0)
+		_internal_track_voice_enabled[track_index] = true
+		_ensure_internal_track_voice(track_index, 1.0)
 
 func _seek_internal_track_voices(position: float, trigger_active_clip: bool = false) -> void:
 	for track_index in _internal_track_voices.keys():
@@ -357,8 +357,6 @@ func _begin_internal_track_group_fade(fade_seconds: float) -> void:
 		if not all_track_indices.has(track_index):
 			all_track_indices.append(track_index)
 
-	_internal_track_voice_fade_start_volumes.clear()
-	_internal_track_voice_fade_target_volumes.clear()
 	_internal_track_voice_fade_start_volumes.clear()
 	_internal_track_voice_fade_target_volumes.clear()
 	_internal_track_voice_fade_is_incoming.clear()
@@ -431,7 +429,7 @@ func _sync_internal_track_voices(previous_position: float, current_position: flo
 			_internal_track_voices.erase(track_index)
 			continue
 		if not bool(_internal_track_voice_enabled.get(track_index, true)):
-				continue
+			continue
 		if voice.has_method("sync_from_master"):
 			voice.sync_from_master(previous_position, current_position)
 

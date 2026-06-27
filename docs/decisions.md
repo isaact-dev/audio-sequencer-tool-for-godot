@@ -456,3 +456,15 @@ Use separate curves for fade-in and fade-out:
 This makes the curve behavior easier to reason about in an audio context. A fade-in curve directly describes how volume rises over time, and a fade-out curve directly describes how volume falls over time.
 
 If either curve is `null`, runtime playback should fall back to a linear fade.
+
+## 2026-06-27 — Do not add per-clip pitch offset
+
+### Decision
+
+Per-clip pitch offset will not be added as a clip property.
+A clip-level pitch offset should not change the playback speed or timing of the clip.
+If two identical clips are placed at the same timeline position and one is pitched differently, they should still stay aligned during playback.
+Godot's normal `AudioStreamPlayer.pitch_scale` changes pitch and playback speed together, so using it for authored per-clip pitch offset would produce incorrect sequencer behavior.
+
+Routing individual clips through audio buses is also not a good solution.
+Track and group routing are important future systems, and clip-level bus routing would fight with track-level and group-level bus routing.

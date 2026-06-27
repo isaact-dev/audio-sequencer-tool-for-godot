@@ -167,7 +167,21 @@ func _clear_clip_settings_ui() -> void:
 	volume_spin.value = 1.0
 	playback_speed_spin.value = 1.0
 	delete_clip_button.disabled = true
+	_refresh_clip_source_warning()
 	_updating_clip_settings_ui = false
+
+func _refresh_clip_source_warning(clip_data: Dictionary = {}) -> void:
+	if source_edit == null:
+		return
+	var source_missing := false
+	if timeline != null and not clip_data.is_empty() and timeline.has_method("is_clip_audio_source_missing"):
+		source_missing = timeline.is_clip_audio_source_missing(clip_data)
+	if source_missing:
+		source_edit.add_theme_color_override("font_color", Color(1.0, 0.45, 0.35))
+		source_edit.tooltip_text = "Audio source could not be loaded."
+	else:
+		source_edit.remove_theme_color_override("font_color")
+		source_edit.tooltip_text = ""
 
 func _sync_clip_settings_ui(clip_index: int, clip_data: Dictionary) -> void:
 	_updating_clip_settings_ui = true
@@ -181,6 +195,7 @@ func _sync_clip_settings_ui(clip_index: int, clip_data: Dictionary) -> void:
 		source_start_offset_spin.value = 0.0
 		playback_speed_spin.value = 1.0
 		volume_spin.value = 1.0
+		_refresh_clip_source_warning()
 	else:
 		delete_clip_button.disabled = false
 		var clip_length := float(clip_data.get("length", timeline.min_clip_length))
@@ -217,6 +232,7 @@ func _sync_clip_settings_ui(clip_index: int, clip_data: Dictionary) -> void:
 			volume_spin.value = clip_volume
 		if source_start_offset_spin.value != clip_source_start_offset_seconds:
 			source_start_offset_spin.value = clip_source_start_offset_seconds
+		_refresh_clip_source_warning(clip_data)
 	_updating_clip_settings_ui = false
 
 

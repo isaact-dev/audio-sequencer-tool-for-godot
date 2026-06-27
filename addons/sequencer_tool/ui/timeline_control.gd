@@ -49,6 +49,9 @@ var bar_line_color := Color(0.55, 0.55, 0.65)
 var bar_number_color := Color(0.92, 0.92, 0.96)
 var clip_text_color := Color(1.0, 1.0, 1.0)
 var clip_outline_color := Color(0.0, 0.0, 0.0, 0.45)
+var missing_audio_clip_outline_color := Color(1.0, 0.18, 0.12, 0.95)
+var missing_audio_clip_overlay_color := Color(1.0, 0.0, 0.0, 0.08)
+var missing_audio_clip_marker_color := Color(1.0, 0.18, 0.12, 1.0)
 
 var clip_waveform_color := Color(1.0, 1.0, 1.0, 0.102)
 var clip_waveform_step: float = 4.0
@@ -191,7 +194,8 @@ func _build_status_text() -> String:
 				track,
 				snap_text
 			]
-
+		if is_clip_audio_source_missing(clip):
+			base_text += " | Missing audio"
 	if not action_feedback_text.is_empty():
 		base_text += " | %s" % action_feedback_text
 
@@ -564,6 +568,13 @@ func _get_clip_end(clip: Dictionary) -> float:
 
 func _clip_has_audio_source(clip: Dictionary) -> bool:
 	return not str(clip.get("audio_path", "")).strip_edges().is_empty()
+
+func is_clip_audio_source_missing(clip: Dictionary) -> bool:
+	var audio_path := str(clip.get("audio_path", "")).strip_edges()
+	if audio_path.is_empty():
+		return false
+	var audio_stream := load(audio_path) as AudioStream
+	return audio_stream == null
 
 func _get_furthest_clip_end() -> float:
 	var furthest_end := 0.0
@@ -3005,7 +3016,8 @@ func _draw_clips() -> void:
 
 		if _clip_has_audio_source(clip):
 			_draw_clip_waveform(rect, clip)
-
+		if is_clip_audio_source_missing(clip):
+			_draw_missing_audio_warning_on_clip(rect)
 		if get_track_muted(track_index):
 			draw_rect(rect, muted_clip_overlay_color, true)
 
@@ -3039,6 +3051,18 @@ func _draw_clips() -> void:
 				font_size,
 				clip_text_color
 			)
+
+func _draw_missing_audio_warning_on_clip(clip_rect: Rect2) -> void:
+	draw_rect(clip_rect, missing_audio_clip_overlay_color, true)
+	draw_rect(clip_rect.grow(-1.0), missing_audio_clip_outline_color, false, 2.0)
+
+	var marker_size := min(12.0, clip_rect.size.y * 0.45)
+	var marker_points := PackedVector2Array([
+		Vector2(clip_rect.end.x - marker_size, clip_rect.position.y),
+		Vector2(clip_rect.end.x, clip_rect.position.y),
+		Vector2(clip_rect.end.x, clip_rect.position.y + marker_size)
+	])
+	draw_colored_polygon(marker_points, missing_audio_clip_marker_color)
 
 func _update_hovered_clip(position: Vector2) -> void:
 	var new_hovered_clip_index := _get_clip_index_at_position(position)

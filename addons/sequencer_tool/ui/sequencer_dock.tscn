@@ -148,7 +148,6 @@ text = "Source Start Offset (s)"
 layout_mode = 2
 max_value = 9999.0
 step = 0.01
-value = 1.0
 
 [node name="ClipPlaybackSpeedLabel" type="Label" parent="HSplitContainer/SettingsHost/ClipSettings" unique_id=212441622]
 layout_mode = 2
