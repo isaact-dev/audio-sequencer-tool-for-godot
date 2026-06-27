@@ -5,6 +5,8 @@ const SEQUENCER_AUDIO_TRACK_VOICE_SCRIPT := preload("res://addons/sequencer_tool
 signal master_connected(master: Node)
 signal master_disconnected(master: Node)
 signal master_position_synced(previous_position: float, current_position: float)
+signal clip_started(track_index: int, clip_index: int, clip_data: Dictionary)
+signal clip_stopped(track_index: int, clip_index: int, clip_data: Dictionary, reason: StringName)
 
 @export var master_path: NodePath
 @export var track_index: int = 0
@@ -31,6 +33,10 @@ func _ensure_voice() -> void:
 	_voice = SEQUENCER_AUDIO_TRACK_VOICE_SCRIPT.new()
 	_voice.name = "SequencerAudioTrackVoice"
 	add_child(_voice)
+	if _voice.has_signal("clip_started") and not _voice.clip_started.is_connected(_on_voice_clip_started):
+		_voice.clip_started.connect(_on_voice_clip_started)
+	if _voice.has_signal("clip_stopped") and not _voice.clip_stopped.is_connected(_on_voice_clip_stopped):
+		_voice.clip_stopped.connect(_on_voice_clip_stopped)
 	_refresh_voice_configuration()
 
 func _refresh_voice_configuration() -> void:
@@ -166,5 +172,12 @@ func clear_audio_stream_cache() -> void:
 	if _voice != null and _voice.has_method("clear_audio_stream_cache"):
 		_voice.clear_audio_stream_cache()
 
+func _on_voice_clip_started(event_track_index: int, clip_index: int, clip_data: Dictionary) -> void:
+	clip_started.emit(event_track_index, clip_index, clip_data)
+
+func _on_voice_clip_stopped(event_track_index: int, clip_index: int, clip_data: Dictionary, reason: StringName) -> void:
+	clip_stopped.emit(event_track_index, clip_index, clip_data, reason)
+
 func _on_master_playback_paused() -> void:
-	stop_audio()
+	if _voice != null and _voice.has_method("stop_audio"):
+		_voice.stop_audio(&"paused")

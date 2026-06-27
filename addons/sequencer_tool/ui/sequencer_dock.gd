@@ -377,6 +377,12 @@ func _cancel_pending_audio_pick_flow() -> void:
 	if pick_audio_dialog != null and pick_audio_dialog.visible:
 		pick_audio_dialog.hide()
 
+func revalidate_audio_clip_lengths_after_file_change() -> void:
+	if audio_preview_controller != null and audio_preview_controller.has_method("clear_audio_stream_cache"):
+		audio_preview_controller.clear_audio_stream_cache()
+
+	if timeline != null and timeline.has_method("revalidate_audio_clip_lengths_for_current_sources"):
+		timeline.revalidate_audio_clip_lengths_for_current_sources()
 
 #Track list UI
 func _refresh_tracks_list(track_names: Array) -> void:

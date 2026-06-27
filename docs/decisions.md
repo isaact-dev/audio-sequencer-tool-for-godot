@@ -468,3 +468,10 @@ Godot's normal `AudioStreamPlayer.pitch_scale` changes pitch and playback speed 
 
 Routing individual clips through audio buses is also not a good solution.
 Track and group routing are important future systems, and clip-level bus routing would fight with track-level and group-level bus routing.
+
+## 2026-06-27 — Audio changed / reimport length validation
+
+### Decision
+When the audio file for a clip changes, its length needs to be revalidated:
+If audio becomes longer → keep clip length unchanged
+If audio becomes shorter → shorten affected clips to the new max allowed length

@@ -19,6 +19,9 @@ var _last_triggered_frame: int = -1
 const EPSILON := 0.00001
 const SILENT_VOLUME_DB := -80.0
 
+signal clip_started(track_index: int, clip_index: int, clip_data: Dictionary)
+signal clip_stopped(track_index: int, clip_index: int, clip_data: Dictionary, reason: StringName)
+
 func _ready() -> void:
 	set_process(false)
 
@@ -52,22 +55,26 @@ func sync_from_master(previous_position: float, current_position: float) -> void
 func seek_from_master(position: float, trigger_active_clip: bool = false) -> void:
 	var local_position := position + timing_offset_subdivisions
 
-	stop_audio()
+	stop_audio(&"seek")
 
 	if trigger_active_clip:
 		_trigger_clip_at_position(local_position)
 
-func stop_audio() -> void:
+func stop_audio(reason: StringName = &"stopped") -> void:
+	var stopped_clip_index := _active_clip_index
+	var stopped_clip_data := _active_clip_data.duplicate(true)
+
 	_active_clip_index = -1
 	_active_clip_end_time = 0.0
 	_active_clip_data = {}
 	set_process(false)
 
-	if _audio_player == null or not is_instance_valid(_audio_player):
-		return
+	if _audio_player != null and is_instance_valid(_audio_player):
+		_audio_player.stop()
+		_audio_player.stream = null
 
-	_audio_player.stop()
-	_audio_player.stream = null
+	if stopped_clip_index >= 0:
+		clip_stopped.emit(track_index, stopped_clip_index, stopped_clip_data, reason)
 
 func release_audio_player() -> void:
 	stop_audio()
@@ -330,26 +337,26 @@ func _play_clip(
 	_active_clip_data = clip.duplicate(true)
 	_active_clip_end_time = (Time.get_ticks_usec() / 1000000.0) + resolved_duration_seconds
 	set_process(true)
+	clip_started.emit(track_index, clip_index, _active_clip_data.duplicate(true))
 
 func _update_active_audio() -> void:
 	if _active_clip_index < 0:
 		return
 
 	if _audio_player == null or not is_instance_valid(_audio_player):
-		stop_audio()
+		stop_audio(&"invalid_player")
 		return
-
 	if _is_track_muted():
-		stop_audio()
+		stop_audio(&"muted")
 		return
 
 	var now_seconds := Time.get_ticks_usec() / 1000000.0
 	if now_seconds >= _active_clip_end_time:
-		stop_audio()
+		stop_audio(&"finished")
 		return
 
 	_audio_player.bus = resolve_audio_bus()
 	_audio_player.volume_db = _linear_volume_to_db(_get_clip_final_volume(_active_clip_data))
 
 func _on_audio_player_finished() -> void:
-	stop_audio()
+	stop_audio(&"finished")

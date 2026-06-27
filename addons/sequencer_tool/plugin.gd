@@ -5,6 +5,7 @@ const SEQUENCER_TRACK_PLAYER_SCRIPT := preload("res://addons/sequencer_tool/runt
 
 var dock
 var dock_ui
+var editor_file_system: EditorFileSystem = null
 
 func _enable_plugin():
 	print("Godot Audio Sequencer Tool enabled")
@@ -55,6 +56,9 @@ func _enter_tree():
 	dock_ui.set_editor_undo_redo(get_undo_redo())
 
 	add_dock(dock)
+	editor_file_system = get_editor_interface().get_resource_filesystem()
+	if editor_file_system != null and not editor_file_system.filesystem_changed.is_connected(_on_editor_filesystem_changed):
+		editor_file_system.filesystem_changed.connect(_on_editor_filesystem_changed)
 	var master_player_icon := _make_recolored_editor_icon("AudioStreamPlayer", Color(1.0, 0.78, 0.22, 1.0))
 	var track_player_icon := _make_recolored_editor_icon("AudioStreamPlayer", Color(1.0, 0.651, 0.306, 1.0))
 
@@ -75,6 +79,9 @@ func _enter_tree():
 func _exit_tree():
 	remove_custom_type("SequencerTrackPlayer")
 	remove_custom_type("SequencerMasterPlayer")
+	if editor_file_system != null and editor_file_system.filesystem_changed.is_connected(_on_editor_filesystem_changed):
+		editor_file_system.filesystem_changed.disconnect(_on_editor_filesystem_changed)
+	editor_file_system = null
 
 	if dock != null:
 		remove_dock(dock)
@@ -82,3 +89,7 @@ func _exit_tree():
 
 	dock = null
 	dock_ui = null
+
+func _on_editor_filesystem_changed() -> void:
+	if dock_ui != null and dock_ui.has_method("revalidate_audio_clip_lengths_after_file_change"):
+		dock_ui.revalidate_audio_clip_lengths_after_file_change()

@@ -7,6 +7,9 @@ signal playback_paused()
 signal song_position_changed(previous_position: float, current_position: float)
 signal track_player_registered(track_player: Node)
 signal track_player_unregistered(track_player: Node)
+signal clip_started(track_index: int, clip_index: int, clip_data: Dictionary, source: Node)
+signal clip_stopped(track_index: int, clip_index: int, clip_data: Dictionary, reason: StringName, source: Node)
+
 @export var sequence: SequencerSequence = null
 @export var fade_in_curve: Curve = null
 @export var fade_out_curve: Curve = null
@@ -120,6 +123,11 @@ func register_track_player(track_player: Node) -> void:
 	_registered_track_players.append(track_player)
 	track_player_registered.emit(track_player)
 
+	if track_player.has_signal("clip_started") and not track_player.clip_started.is_connected(_on_registered_track_player_clip_started):
+		track_player.clip_started.connect(_on_registered_track_player_clip_started.bind(track_player))
+	if track_player.has_signal("clip_stopped") and not track_player.clip_stopped.is_connected(_on_registered_track_player_clip_stopped):
+		track_player.clip_stopped.connect(_on_registered_track_player_clip_stopped.bind(track_player))
+
 	if track_player.has_method("refresh_runtime_setup"):
 		track_player.refresh_runtime_setup()
 
@@ -129,6 +137,14 @@ func unregister_track_player(track_player: Node) -> void:
 
 	if not _registered_track_players.has(track_player):
 		return
+
+	var started_callable := _on_registered_track_player_clip_started.bind(track_player)
+	var stopped_callable := _on_registered_track_player_clip_stopped.bind(track_player)
+
+	if track_player.has_signal("clip_started") and track_player.clip_started.is_connected(started_callable):
+		track_player.clip_started.disconnect(started_callable)
+	if track_player.has_signal("clip_stopped") and track_player.clip_stopped.is_connected(stopped_callable):
+		track_player.clip_stopped.disconnect(stopped_callable)
 
 	_registered_track_players.erase(track_player)
 	track_player_unregistered.emit(track_player)
@@ -290,6 +306,8 @@ func _ensure_internal_track_voice(track_index: int, voice_volume: float = 1.0) -
 	var voice := SEQUENCER_AUDIO_TRACK_VOICE_SCRIPT.new()
 	voice.name = "InternalTrackVoice%d" % track_index
 	add_child(voice)
+	voice.clip_started.connect(_on_internal_track_voice_clip_started.bind(voice))
+	voice.clip_stopped.connect(_on_internal_track_voice_clip_stopped.bind(voice))
 
 	_internal_track_voices[track_index] = voice
 	_internal_track_voice_enabled[track_index] = true
@@ -471,6 +489,18 @@ func _refresh_registered_track_player_setups() -> void:
 
 		if track_player.has_method("refresh_runtime_setup"):
 			track_player.refresh_runtime_setup()
+
+func _on_internal_track_voice_clip_started(event_track_index: int, clip_index: int, clip_data: Dictionary, source_voice: Node) -> void:
+	clip_started.emit(event_track_index, clip_index, clip_data, source_voice)
+
+func _on_internal_track_voice_clip_stopped(event_track_index: int, clip_index: int, clip_data: Dictionary, reason: StringName, source_voice: Node) -> void:
+	clip_stopped.emit(event_track_index, clip_index, clip_data, reason, source_voice)
+
+func _on_registered_track_player_clip_started(event_track_index: int, clip_index: int, clip_data: Dictionary, source_track_player: Node) -> void:
+	clip_started.emit(event_track_index, clip_index, clip_data, source_track_player)
+
+func _on_registered_track_player_clip_stopped(event_track_index: int, clip_index: int, clip_data: Dictionary, reason: StringName, source_track_player: Node) -> void:
+	clip_stopped.emit(event_track_index, clip_index, clip_data, reason, source_track_player)
 
 func _sync_registered_track_players(previous_position: float, current_position: float) -> void:
 	for i in range(_registered_track_players.size() - 1, -1, -1):

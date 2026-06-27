@@ -714,6 +714,55 @@ func _clamp_all_clip_lengths_for_current_tempo() -> bool:
 
 	return changed
 
+func revalidate_audio_clip_lengths_for_current_sources() -> bool:
+	var original_clips := {}
+	var updated_clips := {}
+
+	for i in range(clips.size()):
+		var clip := clips[i]
+		if not clip is Dictionary:
+			continue
+		if not _clip_has_audio_source(clip):
+			continue
+		if not clip.has("length"):
+			continue
+
+		var audio_max_length := _get_clip_max_length_from_audio(clip)
+		if audio_max_length == INF:
+			continue
+
+		var current_length := max(min_clip_length, float(clip.get("length", min_clip_length)))
+		var resolved_length := clamp(current_length, min_clip_length, audio_max_length)
+
+		if is_equal_approx(current_length, resolved_length):
+			continue
+
+		var updated_clip := clip.duplicate(true)
+		updated_clip["length"] = resolved_length
+
+		original_clips[i] = clip.duplicate(true)
+		updated_clips[i] = updated_clip
+
+	if updated_clips.is_empty():
+		return false
+
+	if editor_undo_redo != null:
+		editor_undo_redo.create_action("Revalidate Audio Clip Lengths")
+		for clip_index in updated_clips.keys():
+			editor_undo_redo.add_do_method(self, "_set_clip_data", int(clip_index), updated_clips[clip_index])
+			editor_undo_redo.add_undo_method(self, "_set_clip_data", int(clip_index), original_clips[clip_index])
+		editor_undo_redo.commit_action()
+	else:
+		for clip_index in updated_clips.keys():
+			clips[int(clip_index)] = updated_clips[clip_index]
+		_emit_sequence_changed()
+		_emit_status_text()
+		_emit_selected_clip_changed()
+		queue_redraw()
+
+	_set_action_feedback("Adjusted %d clip(s) for shorter audio." % updated_clips.size())
+	return true
+
 func _find_available_start(track_index: int, clip_length: float, preferred_start: float, exclude_clip_index: int = -1) -> float:
 	var total_subdivisions := float(_get_total_subdivisions())
 	var max_start := max(0.0, total_subdivisions - clip_length)
