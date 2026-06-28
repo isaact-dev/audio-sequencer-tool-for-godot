@@ -475,3 +475,28 @@ Track and group routing are important future systems, and clip-level bus routing
 When the audio file for a clip changes, its length needs to be revalidated:
 If audio becomes longer → keep clip length unchanged
 If audio becomes shorter → shorten affected clips to the new max allowed length
+
+## 2026-06-28 — Track group authoring should use a compact dock panel, not the left settings panel or a separate window
+
+### Decision
+
+Track group authoring should not be placed directly inside the left timeline settings panel, because that panel is already becoming too crowded.
+
+Track group editing should also not use a separate operating-system-style window.  
+Instead, group authoring should live inside the sequencer dock as a collapsible embedded panel opened from a `Groups` button in the top toolbar.
+
+The group editor should use compact option-style controls:
+- group selection should use an option picker / dropdown
+- track membership should use a compact multi-select option-style control
+- track membership selection should allow multiple tracks to be checked without the popup closing after every selection
+
+A track can belong to multiple groups.  
+Only one group is active at a time during runtime playback.
+
+### Reasoning
+
+Track groups are an important runtime arrangement feature, but they are not part of the basic timeline settings workflow.
+Putting all group controls inside the left settings panel makes the main settings area too dense and competes with timeline, clip, and selected-track settings.
+
+A separate floating window is also not ideal because it feels disconnected from the editor dock workflow.
+The group editor should feel like part of the sequencer tool, not like a separate tool window.

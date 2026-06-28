@@ -49,6 +49,13 @@ extends VBoxContainer
 @onready var selected_track_settings_title = $HSplitContainer/SettingsHost/TimelineSettings/Tracks/SelectedTrackSettings/SelectedTrackSettingsHeader/SelectedTrackSettingsTitle
 @onready var track_bus_override_option = $HSplitContainer/SettingsHost/TimelineSettings/Tracks/SelectedTrackSettings/TrackBusOverrideRow/TrackBusOverrideOption
 @onready var default_bus_option = $HSplitContainer/SettingsHost/TimelineSettings/DefaultBusRow/DefaultBusOption
+@onready var groups_button = $ToolBar/ButtonGroups
+@onready var track_groups_panel = $HSplitContainer/TrackGroupsPanel
+@onready var group_option = $HSplitContainer/TrackGroupsPanel/MarginContainer/TrackGroupsContent/GroupPickerRow/GroupOption
+@onready var group_add_button = $HSplitContainer/TrackGroupsPanel/MarginContainer/TrackGroupsContent/GroupPickerRow/GroupAddButton
+@onready var group_delete_button = $HSplitContainer/TrackGroupsPanel/MarginContainer/TrackGroupsContent/GroupPickerRow/GroupDeleteButton
+@onready var group_name_edit = $HSplitContainer/TrackGroupsPanel/MarginContainer/TrackGroupsContent/GroupNameRow/GroupNameEdit
+@onready var group_tracks_menu_button = $HSplitContainer/TrackGroupsPanel/MarginContainer/TrackGroupsContent/GroupTracksRow/GroupTracksMenuButton
 
 var editor_undo_redo: EditorUndoRedoManager = null
 
@@ -74,6 +81,9 @@ var is_dragging_track_row: bool = false
 var track_drag_start_global_position: Vector2 = Vector2.ZERO
 var drag_hover_track_index: int = -1
 var drag_insert_after: bool = false
+
+var selected_group_name: String = ""
+var _updating_group_editor_ui: bool = false
 
 const TRACK_ROW_HEIGHT := 28
 const TRACK_ROW_SEPARATION := 3
@@ -295,6 +305,10 @@ func _refresh_playback_locked_ui() -> void:
 	default_bus_option.disabled = playback_locked
 
 	volume_spin.editable = true
+	groups_button.disabled = false
+
+	if track_groups_panel != null and track_groups_panel.visible:
+		_refresh_groups_panel_ui()
 
 	_refresh_track_toolbar_buttons()
 	_refresh_selected_track_settings_ui()
@@ -629,6 +643,195 @@ func _node_or_descendant_has_focused_line_edit(node: Node) -> bool:
 
 	return false
 
+func _get_track_groups_from_timeline() -> Dictionary:
+	if timeline == null or not timeline.has_method("get_track_groups"):
+		return {}
+	return timeline.get_track_groups()
+
+func _commit_track_groups_to_timeline(groups: Dictionary) -> void:
+	if timeline == null or not timeline.has_method("set_track_groups"):
+		return
+	timeline.set_track_groups(groups)
+
+func _create_unique_group_name() -> String:
+	var groups := _get_track_groups_from_timeline()
+	var index := 1
+	var candidate := "Group %d" % index
+
+	while groups.has(candidate):
+		index += 1
+		candidate = "Group %d" % index
+
+	return candidate
+
+func _get_group_track_indices(group_name: String) -> Array:
+	var result: Array[int] = []
+	var groups := _get_track_groups_from_timeline()
+
+	if timeline == null:
+		return result
+
+	if not groups.has(group_name):
+		return result
+
+	var group_data = groups[group_name]
+	if group_data is Dictionary:
+		var raw_indices = (group_data as Dictionary).get("track_indices", [])
+		if raw_indices is Array:
+			for value in raw_indices:
+				var track_index := int(value)
+				if track_index < 0 or track_index >= timeline.track_count:
+					continue
+				if result.has(track_index):
+					continue
+				result.append(track_index)
+
+	result.sort()
+	return result
+
+func _refresh_groups_panel_ui() -> void:
+	_refresh_group_option()
+	_refresh_selected_group_editor()
+
+func _refresh_group_option() -> void:
+	_updating_group_editor_ui = true
+
+	group_option.clear()
+
+	var groups := _get_track_groups_from_timeline()
+	if not selected_group_name.is_empty() and not groups.has(selected_group_name):
+		selected_group_name = ""
+
+	var group_names := groups.keys()
+	group_names.sort()
+
+	for group_name_value in group_names:
+		var group_name := str(group_name_value)
+		group_option.add_item(group_name)
+		group_option.set_item_metadata(group_option.item_count - 1, group_name)
+
+	var selected_index := -1
+	for option_index in range(group_option.item_count):
+		if str(group_option.get_item_metadata(option_index)) == selected_group_name:
+			selected_index = option_index
+			break
+
+	if selected_index >= 0:
+		group_option.select(selected_index)
+	elif group_option.item_count > 0:
+		group_option.select(0)
+		selected_group_name = str(group_option.get_item_metadata(0))
+
+	var playback_locked = timeline != null and timeline.is_playing
+	group_option.disabled = playback_locked or group_option.item_count == 0
+	group_add_button.disabled = playback_locked
+	group_delete_button.disabled = playback_locked or selected_group_name.is_empty()
+
+	_updating_group_editor_ui = false
+
+func _refresh_selected_group_editor() -> void:
+	_updating_group_editor_ui = true
+
+	var groups := _get_track_groups_from_timeline()
+	var has_selection := not selected_group_name.is_empty() and groups.has(selected_group_name)
+	var playback_locked = timeline != null and timeline.is_playing
+
+	group_name_edit.editable = has_selection and not playback_locked
+	group_delete_button.disabled = playback_locked or not has_selection
+	group_tracks_menu_button.disabled = playback_locked or not has_selection
+
+	if not has_selection:
+		group_name_edit.text = ""
+		group_tracks_menu_button.text = "No group selected"
+		_refresh_group_tracks_popup()
+		_updating_group_editor_ui = false
+		return
+
+	if not group_name_edit.has_focus():
+		group_name_edit.text = selected_group_name
+
+	_refresh_group_tracks_popup()
+	_refresh_group_tracks_menu_button_text()
+
+	_updating_group_editor_ui = false
+
+func _refresh_group_tracks_popup() -> void:
+	var popup = group_tracks_menu_button.get_popup()
+	popup.hide_on_checkable_item_selection = false
+	popup.clear()
+
+	if not popup.id_pressed.is_connected(_on_group_tracks_popup_id_pressed):
+		popup.id_pressed.connect(_on_group_tracks_popup_id_pressed)
+
+	if timeline == null:
+		return
+
+	var group_track_indices := _get_group_track_indices(selected_group_name)
+	var track_names = timeline.get_track_names()
+
+	for track_index in range(timeline.track_count):
+		var track_name := "Track %d" % [track_index + 1]
+		if track_index < track_names.size():
+			track_name = str(track_names[track_index])
+
+		popup.add_check_item(track_name, track_index)
+		popup.set_item_checked(popup.get_item_index(track_index), group_track_indices.has(track_index))
+
+func _on_group_tracks_popup_id_pressed(track_index: int) -> void:
+	if _updating_group_editor_ui:
+		return
+	if selected_group_name.is_empty():
+		return
+	if timeline != null and timeline.is_playing:
+		if timeline.has_method("_is_editing_blocked_by_playback"):
+			timeline._is_editing_blocked_by_playback(true)
+		_refresh_selected_group_editor()
+		return
+
+	var groups := _get_track_groups_from_timeline()
+	if not groups.has(selected_group_name):
+		return
+
+	var track_indices := _get_group_track_indices(selected_group_name)
+
+	if track_indices.has(track_index):
+		track_indices.erase(track_index)
+	else:
+		track_indices.append(track_index)
+
+	track_indices.sort()
+
+	groups[selected_group_name] = {
+		"track_indices": track_indices
+	}
+
+	_commit_track_groups_to_timeline(groups)
+	_refresh_selected_group_editor()
+
+func _refresh_group_tracks_menu_button_text() -> void:
+	if selected_group_name.is_empty():
+		group_tracks_menu_button.text = "No group selected"
+		return
+
+	var track_indices := _get_group_track_indices(selected_group_name)
+	if track_indices.is_empty():
+		group_tracks_menu_button.text = "No tracks"
+		return
+
+	var track_names = timeline.get_track_names()
+	var selected_names: Array[String] = []
+
+	for track_index in track_indices:
+		var track_name := "Track %d" % [track_index + 1]
+		if track_index < track_names.size():
+			track_name = str(track_names[track_index])
+		selected_names.append(track_name)
+
+	if selected_names.size() <= 2:
+		group_tracks_menu_button.text = ", ".join(selected_names)
+	else:
+		group_tracks_menu_button.text = "%d tracks" % selected_names.size()
+
 
 #Track row drag helpers
 func _get_track_row_index_at_global_position(global_position: Vector2) -> int:
@@ -831,6 +1034,14 @@ func _on_button_play_pressed() -> void:
 
 func _on_button_pause_pressed() -> void:
 	timeline.pause()
+
+func _on_button_groups_pressed() -> void:
+	track_groups_panel.visible = not track_groups_panel.visible
+	if track_groups_panel.visible:
+		_refresh_groups_panel_ui()
+
+func _on_track_groups_close_button_pressed() -> void:
+	track_groups_panel.visible = false
 
 
 #Timeline settings handlers
@@ -1122,6 +1333,118 @@ func _on_pick_audio_dialog_custom_action(action: StringName) -> void:
 func _on_pick_audio_dialog_canceled() -> void:
 	pending_audio_pick_mode = ""
 
+func _on_group_option_item_selected(index: int) -> void:
+	if _updating_group_editor_ui:
+		return
+	if index < 0 or index >= group_option.item_count:
+		return
+
+	selected_group_name = str(group_option.get_item_metadata(index))
+	_refresh_selected_group_editor()
+
+func _on_group_add_button_pressed() -> void:
+	if timeline != null and timeline.is_playing:
+		if timeline.has_method("_is_editing_blocked_by_playback"):
+			timeline._is_editing_blocked_by_playback(true)
+		return
+
+	var groups := _get_track_groups_from_timeline()
+	var group_name := _create_unique_group_name()
+
+	groups[group_name] = {
+		"track_indices": []
+	}
+
+	selected_group_name = group_name
+	_commit_track_groups_to_timeline(groups)
+	_refresh_groups_panel_ui()
+
+func _on_group_delete_button_pressed() -> void:
+	if selected_group_name.is_empty():
+		return
+	if timeline != null and timeline.is_playing:
+		if timeline.has_method("_is_editing_blocked_by_playback"):
+			timeline._is_editing_blocked_by_playback(true)
+		return
+
+	var groups := _get_track_groups_from_timeline()
+	if not groups.has(selected_group_name):
+		return
+
+	groups.erase(selected_group_name)
+	selected_group_name = ""
+
+	_commit_track_groups_to_timeline(groups)
+	_refresh_groups_panel_ui()
+
+func _on_group_row_pressed(group_name: String) -> void:
+	selected_group_name = group_name
+	_refresh_groups_panel_ui()
+
+func _on_group_name_edit_text_submitted(_new_text: String) -> void:
+	group_name_edit.release_focus()
+
+func _on_group_name_edit_focus_exited() -> void:
+	if _updating_group_editor_ui:
+		return
+	if selected_group_name.is_empty():
+		return
+
+	var new_name = group_name_edit.text.strip_edges()
+	if new_name.is_empty():
+		_refresh_selected_group_editor()
+		return
+
+	if new_name == selected_group_name:
+		return
+
+	var groups := _get_track_groups_from_timeline()
+	if not groups.has(selected_group_name):
+		_refresh_groups_panel_ui()
+		return
+
+	if groups.has(new_name):
+		_refresh_selected_group_editor()
+		return
+
+	var group_data = groups[selected_group_name]
+	groups.erase(selected_group_name)
+	groups[new_name] = group_data
+	selected_group_name = new_name
+
+	_commit_track_groups_to_timeline(groups)
+	_refresh_groups_panel_ui()
+
+func _on_group_track_membership_toggled(enabled: bool, group_name: String, track_index: int) -> void:
+	if _updating_group_editor_ui:
+		return
+	if timeline != null and timeline.is_playing:
+		if timeline.has_method("_is_editing_blocked_by_playback"):
+			timeline._is_editing_blocked_by_playback(true)
+		_refresh_selected_group_editor()
+		return
+
+	var groups := _get_track_groups_from_timeline()
+	if not groups.has(group_name):
+		return
+
+	var track_indices := _get_group_track_indices(group_name)
+
+	if enabled:
+		if not track_indices.has(track_index):
+			track_indices.append(track_index)
+	else:
+		track_indices.erase(track_index)
+
+	track_indices.sort()
+
+	groups[group_name] = {
+		"track_indices": track_indices
+	}
+
+	_commit_track_groups_to_timeline(groups)
+	_refresh_groups_panel_ui()
+
 
 #Timeline signal handlers
 func _on_timeline_control_tracks_changed(track_names: Array) -> void:
@@ -1141,6 +1464,9 @@ func _on_timeline_control_tracks_changed(track_names: Array) -> void:
 
 	_refresh_tracks_list(track_names)
 	_refresh_track_toolbar_buttons()
+
+	if track_groups_panel != null and track_groups_panel.visible:
+		_refresh_groups_panel_ui()
 
 func _on_timeline_control_status_text_changed(text: String) -> void:
 	status_label.text = text

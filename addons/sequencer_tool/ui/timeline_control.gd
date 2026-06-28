@@ -438,9 +438,65 @@ func set_track_bus_override(track_index: int, bus_name: StringName) -> void:
 func get_track_groups() -> Dictionary:
 	return track_groups.duplicate(true)
 
-func set_track_groups(value: Dictionary) -> void:
-	track_groups = value.duplicate(true)
+func _sanitize_track_groups(value: Dictionary) -> Dictionary:
+	var sanitized: Dictionary = {}
+
+	for group_name_value in value.keys():
+		var group_name := str(group_name_value).strip_edges()
+		if group_name.is_empty():
+			continue
+
+		var group_data = value[group_name_value]
+		var track_indices: Array[int] = []
+
+		if group_data is Array:
+			for raw_track_index in group_data:
+				var track_index := int(raw_track_index)
+				if track_index < 0 or track_index >= track_count:
+					continue
+				if track_indices.has(track_index):
+					continue
+				track_indices.append(track_index)
+		elif group_data is Dictionary:
+			var raw_indices = (group_data as Dictionary).get("track_indices", [])
+			if raw_indices is Array:
+				for raw_track_index in raw_indices:
+					var track_index := int(raw_track_index)
+					if track_index < 0 or track_index >= track_count:
+						continue
+					if track_indices.has(track_index):
+						continue
+					track_indices.append(track_index)
+
+		track_indices.sort()
+		sanitized[group_name] = {
+			"track_indices": track_indices
+		}
+
+	return sanitized
+
+func _apply_track_groups(value: Dictionary) -> void:
+	track_groups = _sanitize_track_groups(value)
 	_emit_sequence_changed()
+	_emit_status_text()
+	queue_redraw()
+
+func set_track_groups(value: Dictionary) -> void:
+	var sanitized := _sanitize_track_groups(value)
+
+	if track_groups == sanitized:
+		return
+
+	if editor_undo_redo == null:
+		_apply_track_groups(sanitized)
+		return
+
+	var previous_groups := track_groups.duplicate(true)
+
+	editor_undo_redo.create_action("Set Track Groups")
+	editor_undo_redo.add_do_method(self, "_apply_track_groups", sanitized)
+	editor_undo_redo.add_undo_method(self, "_apply_track_groups", previous_groups)
+	editor_undo_redo.commit_action()
 
 func _build_track_state_snapshot() -> Dictionary:
 	var clips_snapshot: Array[Dictionary] = []

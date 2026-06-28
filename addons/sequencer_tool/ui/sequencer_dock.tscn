@@ -65,6 +65,10 @@ layout_mode = 2
 disabled = true
 text = "Delete Clip"
 
+[node name="ButtonGroups" type="Button" parent="ToolBar" unique_id=1126855888]
+layout_mode = 2
+text = "Groups"
+
 [node name="StatusBar" type="HBoxContainer" parent="." unique_id=1938819148]
 layout_mode = 2
 
@@ -217,7 +221,11 @@ text = "Default Bus:"
 layout_mode = 2
 size_flags_horizontal = 3
 text_overrun_behavior = 1
+selected = 0
 fit_to_longest_item = false
+item_count = 1
+popup/item_0/text = "Master"
+popup/item_0/id = 0
 
 [node name="BPM" type="HBoxContainer" parent="HSplitContainer/SettingsHost/TimelineSettings" unique_id=1658200314]
 layout_mode = 2
@@ -387,6 +395,74 @@ auto_scroll_edge_threshold = 12.0
 auto_scroll_speed = 12.0
 min_clip_length = 0.9
 
+[node name="TrackGroupsPanel" type="PanelContainer" parent="HSplitContainer" unique_id=1606437123]
+visible = false
+layout_mode = 2
+
+[node name="MarginContainer" type="MarginContainer" parent="HSplitContainer/TrackGroupsPanel" unique_id=1554959942]
+layout_mode = 2
+
+[node name="TrackGroupsContent" type="VBoxContainer" parent="HSplitContainer/TrackGroupsPanel/MarginContainer" unique_id=519619929]
+layout_mode = 2
+
+[node name="TrackGroupsHeader" type="HBoxContainer" parent="HSplitContainer/TrackGroupsPanel/MarginContainer/TrackGroupsContent" unique_id=1225613932]
+layout_mode = 2
+
+[node name="TrackGroupsTitle" type="RichTextLabel" parent="HSplitContainer/TrackGroupsPanel/MarginContainer/TrackGroupsContent/TrackGroupsHeader" unique_id=91700007]
+layout_mode = 2
+size_flags_horizontal = 3
+bbcode_enabled = true
+text = "[b]Track Groups[/b]"
+fit_content = true
+autowrap_mode = 0
+
+[node name="TrackGroupsCloseButton" type="Button" parent="HSplitContainer/TrackGroupsPanel/MarginContainer/TrackGroupsContent/TrackGroupsHeader" unique_id=1614067403]
+layout_mode = 2
+text = "×"
+
+[node name="GroupPickerRow" type="HBoxContainer" parent="HSplitContainer/TrackGroupsPanel/MarginContainer/TrackGroupsContent" unique_id=1635024771]
+layout_mode = 2
+
+[node name="GroupOption" type="OptionButton" parent="HSplitContainer/TrackGroupsPanel/MarginContainer/TrackGroupsContent/GroupPickerRow" unique_id=1862569936]
+layout_mode = 2
+size_flags_horizontal = 3
+text_overrun_behavior = 1
+fit_to_longest_item = false
+
+[node name="GroupAddButton" type="Button" parent="HSplitContainer/TrackGroupsPanel/MarginContainer/TrackGroupsContent/GroupPickerRow" unique_id=2142178221]
+layout_mode = 2
+text = "+"
+
+[node name="GroupDeleteButton" type="Button" parent="HSplitContainer/TrackGroupsPanel/MarginContainer/TrackGroupsContent/GroupPickerRow" unique_id=561339269]
+layout_mode = 2
+text = "×"
+
+[node name="GroupNameRow" type="HBoxContainer" parent="HSplitContainer/TrackGroupsPanel/MarginContainer/TrackGroupsContent" unique_id=1950412809]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="HSplitContainer/TrackGroupsPanel/MarginContainer/TrackGroupsContent/GroupNameRow" unique_id=891775761]
+layout_mode = 2
+text = "Name:"
+
+[node name="GroupNameEdit" type="LineEdit" parent="HSplitContainer/TrackGroupsPanel/MarginContainer/TrackGroupsContent/GroupNameRow" unique_id=445055544]
+layout_mode = 2
+size_flags_horizontal = 3
+placeholder_text = "Group Name"
+
+[node name="GroupTracksRow" type="HBoxContainer" parent="HSplitContainer/TrackGroupsPanel/MarginContainer/TrackGroupsContent" unique_id=2021449496]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="HSplitContainer/TrackGroupsPanel/MarginContainer/TrackGroupsContent/GroupTracksRow" unique_id=1474216187]
+layout_mode = 2
+text = "Tracks:"
+
+[node name="GroupTracksMenuButton" type="MenuButton" parent="HSplitContainer/TrackGroupsPanel/MarginContainer/TrackGroupsContent/GroupTracksRow" unique_id=1528589837]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "No tracks"
+flat = false
+text_overrun_behavior = 1
+
 [node name="NewSequenceDialog" type="ConfirmationDialog" parent="." unique_id=406818455]
 title = "New Sequence"
 
@@ -473,6 +549,7 @@ metadata/_custom_type_script = "uid://ct22eaxo3fdn8"
 [connection signal="pressed" from="ToolBar/ButtonPause" to="." method="_on_button_pause_pressed"]
 [connection signal="pressed" from="ToolBar/ButtonAddClip" to="." method="_on_button_add_clip_pressed"]
 [connection signal="pressed" from="ToolBar/ButtonDeleteClip" to="." method="_on_button_delete_clip_pressed"]
+[connection signal="pressed" from="ToolBar/ButtonGroups" to="." method="_on_button_groups_pressed"]
 [connection signal="toggled" from="StatusBar/LoopCheckBox" to="." method="_on_loop_check_box_toggled"]
 [connection signal="pressed" from="HSplitContainer/SettingsHost/ClipSettings/HBoxContainer/ClipCloseButton" to="." method="_on_clip_close_button_pressed"]
 [connection signal="focus_exited" from="HSplitContainer/SettingsHost/ClipSettings/ClipNameEdit" to="." method="_on_clip_name_edit_focus_exited"]
@@ -505,6 +582,12 @@ metadata/_custom_type_script = "uid://ct22eaxo3fdn8"
 [connection signal="sequence_changed" from="HSplitContainer/TimelineBox/TimelinePanel/ScrollContainer/TimelineControl" to="." method="_on_timeline_control_sequence_changed"]
 [connection signal="status_text_changed" from="HSplitContainer/TimelineBox/TimelinePanel/ScrollContainer/TimelineControl" to="." method="_on_timeline_control_status_text_changed"]
 [connection signal="tracks_changed" from="HSplitContainer/TimelineBox/TimelinePanel/ScrollContainer/TimelineControl" to="." method="_on_timeline_control_tracks_changed"]
+[connection signal="pressed" from="HSplitContainer/TrackGroupsPanel/MarginContainer/TrackGroupsContent/TrackGroupsHeader/TrackGroupsCloseButton" to="." method="_on_track_groups_close_button_pressed"]
+[connection signal="item_selected" from="HSplitContainer/TrackGroupsPanel/MarginContainer/TrackGroupsContent/GroupPickerRow/GroupOption" to="." method="_on_group_option_item_selected"]
+[connection signal="pressed" from="HSplitContainer/TrackGroupsPanel/MarginContainer/TrackGroupsContent/GroupPickerRow/GroupAddButton" to="." method="_on_group_add_button_pressed"]
+[connection signal="pressed" from="HSplitContainer/TrackGroupsPanel/MarginContainer/TrackGroupsContent/GroupPickerRow/GroupDeleteButton" to="." method="_on_group_delete_button_pressed"]
+[connection signal="focus_exited" from="HSplitContainer/TrackGroupsPanel/MarginContainer/TrackGroupsContent/GroupNameRow/GroupNameEdit" to="." method="_on_group_name_edit_focus_exited"]
+[connection signal="text_submitted" from="HSplitContainer/TrackGroupsPanel/MarginContainer/TrackGroupsContent/GroupNameRow/GroupNameEdit" to="." method="_on_group_name_edit_text_submitted"]
 [connection signal="confirmed" from="NewSequenceDialog" to="." method="_on_new_sequence_dialog_confirmed"]
 [connection signal="file_selected" from="OpenSequenceDialog" to="." method="_on_open_sequence_dialog_file_selected"]
 [connection signal="file_selected" from="SaveSequenceDialog" to="." method="_on_save_sequence_dialog_file_selected"]
