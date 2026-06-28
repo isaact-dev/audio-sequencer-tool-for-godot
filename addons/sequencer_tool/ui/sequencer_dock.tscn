@@ -282,6 +282,35 @@ layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
 
+[node name="SelectedTrackSettings" type="VBoxContainer" parent="HSplitContainer/SettingsHost/TimelineSettings/Tracks" unique_id=436867217]
+layout_mode = 2
+
+[node name="SelectedTrackSettingsHeader" type="HBoxContainer" parent="HSplitContainer/SettingsHost/TimelineSettings/Tracks/SelectedTrackSettings" unique_id=1292126575]
+layout_mode = 2
+
+[node name="SelectedTrackSettingsTitle" type="Label" parent="HSplitContainer/SettingsHost/TimelineSettings/Tracks/SelectedTrackSettings/SelectedTrackSettingsHeader" unique_id=1839438141]
+layout_mode = 2
+text = "Selected Track"
+
+[node name="Spacer" type="Control" parent="HSplitContainer/SettingsHost/TimelineSettings/Tracks/SelectedTrackSettings/SelectedTrackSettingsHeader" unique_id=997208674]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="SelectedTrackSettingsCloseButton" type="Button" parent="HSplitContainer/SettingsHost/TimelineSettings/Tracks/SelectedTrackSettings/SelectedTrackSettingsHeader" unique_id=218882145]
+layout_mode = 2
+text = "×"
+
+[node name="TrackBusOverrideRow" type="HBoxContainer" parent="HSplitContainer/SettingsHost/TimelineSettings/Tracks/SelectedTrackSettings" unique_id=426430029]
+layout_mode = 2
+
+[node name="TrackBusOverrideLabel" type="Label" parent="HSplitContainer/SettingsHost/TimelineSettings/Tracks/SelectedTrackSettings/TrackBusOverrideRow" unique_id=1277545860]
+layout_mode = 2
+text = "Bus:"
+
+[node name="TrackBusOverrideOption" type="OptionButton" parent="HSplitContainer/SettingsHost/TimelineSettings/Tracks/SelectedTrackSettings/TrackBusOverrideRow" unique_id=267258288]
+layout_mode = 2
+size_flags_horizontal = 3
+
 [node name="TrackToolbar" type="HBoxContainer" parent="HSplitContainer/SettingsHost/TimelineSettings/Tracks" unique_id=1694568536]
 layout_mode = 2
 
@@ -439,6 +468,8 @@ metadata/_custom_type_script = "uid://ct22eaxo3fdn8"
 [connection signal="text_submitted" from="HSplitContainer/SettingsHost/TimelineSettings/TitleEdit" to="." method="_on_title_edit_text_submitted"]
 [connection signal="value_changed" from="HSplitContainer/SettingsHost/TimelineSettings/BPM/BPMSlider" to="." method="_on_bpm_slider_value_changed"]
 [connection signal="value_changed" from="HSplitContainer/SettingsHost/TimelineSettings/Bars/BarsSlider" to="." method="_on_bars_slider_value_changed"]
+[connection signal="pressed" from="HSplitContainer/SettingsHost/TimelineSettings/Tracks/SelectedTrackSettings/SelectedTrackSettingsHeader/SelectedTrackSettingsCloseButton" to="." method="_on_selected_track_settings_close_button_pressed"]
+[connection signal="item_selected" from="HSplitContainer/SettingsHost/TimelineSettings/Tracks/SelectedTrackSettings/TrackBusOverrideRow/TrackBusOverrideOption" to="." method="_on_track_bus_override_option_item_selected"]
 [connection signal="pressed" from="HSplitContainer/SettingsHost/TimelineSettings/Tracks/TrackToolbar/TrackAddButton" to="." method="_on_track_add_button_pressed"]
 [connection signal="pressed" from="HSplitContainer/SettingsHost/TimelineSettings/Tracks/TrackToolbar/TrackDeleteButton" to="." method="_on_track_delete_button_pressed"]
 [connection signal="pressed" from="HSplitContainer/SettingsHost/TimelineSettings/Tracks/TrackToolbar/TrackDuplicateButton" to="." method="_on_track_duplicate_button_pressed"]

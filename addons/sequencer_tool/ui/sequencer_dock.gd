@@ -45,12 +45,16 @@ extends VBoxContainer
 @onready var playback_speed_spin = $HSplitContainer/SettingsHost/ClipSettings/ClipPlaybackSpeedSpin
 @onready var audio_preview_controller = $AudioPreviewController
 @onready var source_start_offset_spin = $HSplitContainer/SettingsHost/ClipSettings/ClipSourceStartOffsetSpin
+@onready var selected_track_settings = $HSplitContainer/SettingsHost/TimelineSettings/Tracks/SelectedTrackSettings
+@onready var selected_track_settings_title = $HSplitContainer/SettingsHost/TimelineSettings/Tracks/SelectedTrackSettings/SelectedTrackSettingsHeader/SelectedTrackSettingsTitle
+@onready var track_bus_override_option = $HSplitContainer/SettingsHost/TimelineSettings/Tracks/SelectedTrackSettings/TrackBusOverrideRow/TrackBusOverrideOption
 
 var editor_undo_redo: EditorUndoRedoManager = null
 
 var current_sequence_path: String = ""
 
 var _updating_clip_settings_ui: bool = false
+var _updating_selected_track_settings_ui: bool = false
 
 var pending_track_delete_index: int = -1
 var pending_audio_pick_mode: String = ""
@@ -104,6 +108,7 @@ func _ready() -> void:
 
 	clip_settings.visible = false
 	timeline_settings.visible = true
+	selected_track_settings.visible = false
 
 	loop_check_box.button_pressed = timeline.loop_enabled
 
@@ -265,6 +270,7 @@ func _refresh_playback_locked_ui() -> void:
 	volume_spin.editable = true
 
 	_refresh_track_toolbar_buttons()
+	_refresh_selected_track_settings_ui()
 
 func _update_title_text() -> void:
 	title_label.text = "Audio Sequencer * - "+str(sequence_title) if has_unsaved_changes else "Audio Sequencer - "+str(sequence_title)
@@ -444,6 +450,7 @@ func _refresh_tracks_list(track_names: Array) -> void:
 
 	_refresh_track_toolbar_buttons()
 	_refresh_tracks_list_height()
+	_refresh_selected_track_settings_ui()
 
 func _refresh_tracks_list_height() -> void:
 	var visible_rows := min(max(timeline.track_count, 1), 6)
@@ -488,6 +495,67 @@ func _set_selected_track_index(value: int) -> void:
 		selected_track_index = value
 	_refresh_track_row_selection_styles()
 	_refresh_track_toolbar_buttons()
+	_refresh_selected_track_settings_ui()
+
+func _refresh_selected_track_settings_ui() -> void:
+	_updating_selected_track_settings_ui = true
+
+	var has_track_selection = timeline != null and selected_track_index >= 0 and selected_track_index < timeline.track_count
+	selected_track_settings.visible = has_track_selection
+
+	if not has_track_selection:
+		selected_track_settings_title.text = "Selected Track"
+		_refresh_track_bus_override_options(&"")
+		track_bus_override_option.disabled = true
+		_updating_selected_track_settings_ui = false
+		return
+
+	var track_name := "Track %d" % [selected_track_index + 1]
+	var track_names = timeline.get_track_names()
+	if selected_track_index < track_names.size():
+		track_name = str(track_names[selected_track_index])
+
+	selected_track_settings_title.text = "Track: %s" % track_name
+
+	var bus_override := &""
+	if timeline.has_method("get_track_bus_override"):
+		bus_override = timeline.get_track_bus_override(selected_track_index)
+
+	_refresh_track_bus_override_options(bus_override)
+
+	var playback_locked = timeline != null and timeline.is_playing
+	track_bus_override_option.disabled = playback_locked
+
+
+	_updating_selected_track_settings_ui = false
+
+func _refresh_track_bus_override_options(selected_bus: StringName = &"") -> void:
+	track_bus_override_option.clear()
+
+	var default_bus := &""
+	if timeline != null and timeline.has_method("get_default_audio_bus"):
+		default_bus = timeline.get_default_audio_bus()
+
+	var default_label := "Default"
+	if not default_bus.is_empty():
+		default_label = "Default (%s)" % str(default_bus)
+
+	track_bus_override_option.add_item(default_label)
+	track_bus_override_option.set_item_metadata(0, &"")
+
+	for bus_index in range(AudioServer.get_bus_count()):
+		var bus_name := StringName(AudioServer.get_bus_name(bus_index))
+		track_bus_override_option.add_item(str(bus_name))
+		track_bus_override_option.set_item_metadata(track_bus_override_option.item_count - 1, bus_name)
+
+	var selected_index := 0
+	for option_index in range(track_bus_override_option.item_count):
+		var option_bus := track_bus_override_option.get_item_metadata(option_index) as StringName
+		if option_bus == selected_bus:
+			selected_index = option_index
+			break
+
+	track_bus_override_option.select(selected_index)
 
 func _build_track_row_style(selected: bool, drag_target: bool = false, insert_after: bool = false) -> StyleBoxFlat:
 	var style := StyleBoxFlat.new()
@@ -892,6 +960,31 @@ func _on_track_mute_toggled(toggled_on: bool, track_index: int) -> void:
 func _on_track_row_focus_entered(track_index: int) -> void:
 	_set_selected_track_index(track_index)
 
+func _on_selected_track_settings_close_button_pressed() -> void:
+	_set_selected_track_index(-1)
+
+func _on_track_bus_override_option_item_selected(index: int) -> void:
+	if _updating_selected_track_settings_ui:
+		return
+	if timeline == null:
+		return
+	if selected_track_index < 0 or selected_track_index >= timeline.track_count:
+		return
+	if index < 0 or index >= track_bus_override_option.item_count:
+		return
+
+	var bus_name := track_bus_override_option.get_item_metadata(index) as StringName
+	timeline.set_track_bus_override(selected_track_index, bus_name)
+	_refresh_selected_track_settings_ui()
+
+func _on_track_bus_clear_button_pressed() -> void:
+	if timeline == null:
+		return
+	if selected_track_index < 0 or selected_track_index >= timeline.track_count:
+		return
+
+	timeline.set_track_bus_override(selected_track_index, &"")
+	_refresh_selected_track_settings_ui()
 
 #Dialog handlers
 func _on_new_sequence_dialog_confirmed() -> void:

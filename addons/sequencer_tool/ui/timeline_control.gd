@@ -382,21 +382,37 @@ func get_track_bus_override(track_index: int) -> StringName:
 
 	return &""
 
-func set_track_bus_override(track_index: int, bus_name: StringName) -> void:
+func _apply_track_bus_override(track_index: int, bus_name: StringName) -> void:
 	if track_index < 0 or track_index >= track_count:
 		return
 
 	if bus_name.is_empty():
-		if track_bus_overrides.has(track_index):
-			track_bus_overrides.erase(track_index)
-			_emit_sequence_changed()
-		return
+		track_bus_overrides.erase(track_index)
+	else:
+		track_bus_overrides[track_index] = bus_name
 
-	if StringName(str(track_bus_overrides.get(track_index, &""))) == bus_name:
-		return
-
-	track_bus_overrides[track_index] = bus_name
 	_emit_sequence_changed()
+	_emit_status_text()
+	queue_redraw()
+
+func set_track_bus_override(track_index: int, bus_name: StringName) -> void:
+	if track_index < 0 or track_index >= track_count:
+		return
+
+	var resolved_bus_name := StringName(str(bus_name).strip_edges())
+	var previous_bus_name := get_track_bus_override(track_index)
+
+	if previous_bus_name == resolved_bus_name:
+		return
+
+	if editor_undo_redo == null:
+		_apply_track_bus_override(track_index, resolved_bus_name)
+		return
+
+	editor_undo_redo.create_action("Set Track Bus Override")
+	editor_undo_redo.add_do_method(self, "_apply_track_bus_override", track_index, resolved_bus_name)
+	editor_undo_redo.add_undo_method(self, "_apply_track_bus_override", track_index, previous_bus_name)
+	editor_undo_redo.commit_action()
 
 func get_track_groups() -> Dictionary:
 	return track_groups.duplicate(true)

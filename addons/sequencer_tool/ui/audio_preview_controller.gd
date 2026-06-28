@@ -93,8 +93,25 @@ func _get_available_source_duration_seconds(audio_stream: AudioStream, start_off
 
 	return source_remaining_seconds / resolved_playback_speed
 
-func _resolve_track_preview_bus(_track_index: int) -> String:
-	return "Master"
+func _resolve_track_preview_bus(track_index: int) -> StringName:
+	if timeline == null:
+		return &"Master"
+
+	var resolved_bus := &""
+
+	if timeline.has_method("get_track_bus_override"):
+		resolved_bus = timeline.get_track_bus_override(track_index)
+
+	if resolved_bus.is_empty() and timeline.has_method("get_default_audio_bus"):
+		resolved_bus = timeline.get_default_audio_bus()
+
+	if resolved_bus.is_empty():
+		resolved_bus = &"Master"
+
+	if AudioServer.get_bus_index(String(resolved_bus)) == -1:
+		return &"Master"
+
+	return resolved_bus
 
 func _get_preview_linear_volume(track_index: int, clip_index: int, fallback_clip_volume: float) -> float:
 	if timeline == null:
@@ -210,6 +227,7 @@ func _update_active_previews() -> void:
 			_release_preview_player(player)
 			continue
 
+		player.bus = _resolve_track_preview_bus(track_index)
 		var final_volume := _get_preview_linear_volume(track_index, clip_index, clip_volume)
 		player.volume_db = _linear_volume_to_preview_db(final_volume)
 
