@@ -9,6 +9,9 @@ signal track_player_registered(track_player: Node)
 signal track_player_unregistered(track_player: Node)
 signal clip_started(track_index: int, clip_index: int, clip_data: Dictionary, source: Node)
 signal clip_stopped(track_index: int, clip_index: int, clip_data: Dictionary, reason: StringName, source: Node)
+signal active_track_group_changed(previous_group: StringName, current_group: StringName)
+signal track_group_fade_started(previous_group: StringName, current_group: StringName, fade_seconds: float)
+signal track_group_fade_completed(previous_group: StringName, current_group: StringName)
 
 @export var sequence: SequencerSequence = null
 @export var fade_in_curve: Curve = null
@@ -43,6 +46,8 @@ var _internal_track_voice_fade_elapsed: float = 0.0
 var _internal_track_voice_fade_duration: float = 0.0
 var _internal_track_voice_fading: bool = false
 var _internal_track_voice_fade_is_incoming: Dictionary = {}
+var _track_group_fade_previous_group: StringName = &""
+var _track_group_fade_current_group: StringName = &""
 
 func _ready() -> void:
 	set_process(true)
@@ -172,10 +177,16 @@ func clear_track_bus_override(track_index: int) -> void:
 		track_bus_overrides.erase(track_index)
 
 func set_active_track_group(group_name: StringName, fade_seconds: float = -1.0) -> void:
-	if active_track_group == group_name and fade_seconds < 0.0:
+	var previous_group := active_track_group
+	var group_changed := previous_group != group_name
+
+	if not group_changed and fade_seconds < 0.0:
 		return
 
 	active_track_group = group_name
+
+	if group_changed:
+		active_track_group_changed.emit(previous_group, active_track_group)
 
 	if fade_seconds >= 0.0:
 		track_group_fade_seconds = fade_seconds
@@ -185,9 +196,11 @@ func set_active_track_group(group_name: StringName, fade_seconds: float = -1.0) 
 		resolved_fade_seconds = fade_seconds
 
 	if is_playing and resolved_fade_seconds > 0.0:
-		_begin_internal_track_group_fade(resolved_fade_seconds)
+		_begin_internal_track_group_fade(resolved_fade_seconds, previous_group, active_track_group)
 	else:
 		_internal_track_voice_fading = false
+		_track_group_fade_previous_group = &""
+		_track_group_fade_current_group = &""
 		refresh_runtime_setup()
 
 func get_active_internal_track_indices() -> Array[int]:
@@ -362,7 +375,10 @@ func _sample_normalized_curve(curve: Curve, t: float, fallback_value: float) -> 
 
 	return clamp(curve.sample_baked(resolved_t), 0.0, 1.0)
 
-func _begin_internal_track_group_fade(fade_seconds: float) -> void:
+func _begin_internal_track_group_fade(fade_seconds: float, previous_group: StringName, current_group: StringName) -> void:
+	_track_group_fade_previous_group = previous_group
+	_track_group_fade_current_group = current_group
+	track_group_fade_started.emit(previous_group, current_group, fade_seconds)
 	var wanted_track_indices := get_active_internal_track_indices()
 	var all_track_indices: Array[int] = []
 
@@ -429,7 +445,8 @@ func _update_internal_track_voice_fade(delta: float) -> void:
 
 	if raw_t < 1.0:
 		return
-
+	var completed_previous_group := _track_group_fade_previous_group
+	var completed_current_group := _track_group_fade_current_group
 	_internal_track_voice_fading = false
 	_internal_track_voice_fade_start_volumes.clear()
 	_internal_track_voice_fade_target_volumes.clear()
@@ -439,6 +456,7 @@ func _update_internal_track_voice_fade(delta: float) -> void:
 
 	_internal_track_indices_signature = "__force_refresh__"
 	_refresh_internal_track_voices()
+	track_group_fade_completed.emit(completed_previous_group, completed_current_group)
 
 func _sync_internal_track_voices(previous_position: float, current_position: float) -> void:
 	for track_index in _internal_track_voices.keys():
