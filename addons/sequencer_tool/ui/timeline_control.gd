@@ -369,12 +369,33 @@ func set_track_volume(track_index: int, value: float) -> void:
 func get_default_audio_bus() -> StringName:
 	return default_audio_bus
 
+func _apply_default_audio_bus(value: StringName) -> void:
+	var resolved_value := value
+	if resolved_value.is_empty():
+		resolved_value = &"Master"
+
+	default_audio_bus = resolved_value
+	_emit_sequence_changed()
+	_emit_status_text()
+	queue_redraw()
+
 func set_default_audio_bus(value: StringName) -> void:
-	if default_audio_bus == value:
+	var resolved_value := StringName(str(value).strip_edges())
+	if resolved_value.is_empty():
+		resolved_value = &"Master"
+
+	if default_audio_bus == resolved_value:
 		return
 
-	default_audio_bus = value
-	_emit_sequence_changed()
+	if editor_undo_redo == null:
+		_apply_default_audio_bus(resolved_value)
+		return
+
+	var previous_value := default_audio_bus
+	editor_undo_redo.create_action("Set Default Audio Bus")
+	editor_undo_redo.add_do_method(self, "_apply_default_audio_bus", resolved_value)
+	editor_undo_redo.add_undo_method(self, "_apply_default_audio_bus", previous_value)
+	editor_undo_redo.commit_action()
 
 func get_track_bus_override(track_index: int) -> StringName:
 	if track_bus_overrides.has(track_index):

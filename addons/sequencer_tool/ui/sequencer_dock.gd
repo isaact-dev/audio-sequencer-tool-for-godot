@@ -48,6 +48,7 @@ extends VBoxContainer
 @onready var selected_track_settings = $HSplitContainer/SettingsHost/TimelineSettings/Tracks/SelectedTrackSettings
 @onready var selected_track_settings_title = $HSplitContainer/SettingsHost/TimelineSettings/Tracks/SelectedTrackSettings/SelectedTrackSettingsHeader/SelectedTrackSettingsTitle
 @onready var track_bus_override_option = $HSplitContainer/SettingsHost/TimelineSettings/Tracks/SelectedTrackSettings/TrackBusOverrideRow/TrackBusOverrideOption
+@onready var default_bus_option = $HSplitContainer/SettingsHost/TimelineSettings/DefaultBusRow/DefaultBusOption
 
 var editor_undo_redo: EditorUndoRedoManager = null
 
@@ -120,6 +121,11 @@ func _ready() -> void:
 	bpm_slider.max_value = 300
 	bpm_slider.step = 1
 	bpm_slider.value = timeline.bpm
+
+	if timeline.has_method("get_default_audio_bus"):
+		_refresh_default_bus_options(timeline.get_default_audio_bus())
+	else:
+		_refresh_default_bus_options(&"Master")
 
 	_refresh_tracks_list(timeline.get_track_names())
 	_clear_clip_settings_ui()
@@ -252,6 +258,26 @@ func _sync_timeline_settings_ui() -> void:
 	if loop_check_box.button_pressed != timeline.loop_enabled:
 		loop_check_box.button_pressed = timeline.loop_enabled
 
+	if timeline.has_method("get_default_audio_bus"):
+		_refresh_default_bus_options(timeline.get_default_audio_bus())
+
+func _refresh_default_bus_options(selected_bus: StringName = &"") -> void:
+	default_bus_option.clear()
+
+	for bus_index in range(AudioServer.get_bus_count()):
+		var bus_name := StringName(AudioServer.get_bus_name(bus_index))
+		default_bus_option.add_item(str(bus_name))
+		default_bus_option.set_item_metadata(default_bus_option.item_count - 1, bus_name)
+
+	var selected_index := 0
+	for option_index in range(default_bus_option.item_count):
+		var option_bus := default_bus_option.get_item_metadata(option_index) as StringName
+		if option_bus == selected_bus:
+			selected_index = option_index
+			break
+
+	default_bus_option.select(selected_index)
+
 func _refresh_playback_locked_ui() -> void:
 	var playback_locked = timeline != null and timeline.is_playing
 
@@ -266,6 +292,7 @@ func _refresh_playback_locked_ui() -> void:
 	start_spin.editable = not playback_locked
 	length_spin.editable = not playback_locked
 	source_start_offset_spin.editable = not playback_locked
+	default_bus_option.disabled = playback_locked
 
 	volume_spin.editable = true
 
@@ -843,6 +870,17 @@ func _on_title_edit_focus_exited() -> void:
 	editor_undo_redo.add_undo_method(self, "_apply_sequence_title", previous_title)
 	editor_undo_redo.commit_action()
 
+func _on_default_bus_option_item_selected(index: int) -> void:
+	if timeline == null:
+		return
+	if index < 0 or index >= default_bus_option.item_count:
+		return
+
+	var bus_name := default_bus_option.get_item_metadata(index) as StringName
+	timeline.set_default_audio_bus(bus_name)
+
+	if has_method("_refresh_selected_track_settings_ui"):
+		_refresh_selected_track_settings_ui()
 
 #Clip settings handlers
 func _on_clip_name_edit_text_submitted(new_text: String) -> void:

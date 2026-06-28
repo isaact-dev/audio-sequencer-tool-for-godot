@@ -102,21 +102,16 @@ size_flags_horizontal = 3
 [node name="HBoxContainer" type="HBoxContainer" parent="HSplitContainer/SettingsHost/ClipSettings" unique_id=1624691482]
 layout_mode = 2
 
-[node name="ClipPropertiesLabel" type="Label" parent="HSplitContainer/SettingsHost/ClipSettings/HBoxContainer" unique_id=384330737]
-layout_mode = 2
-text = "Clip Properties"
-
-[node name="Control" type="Control" parent="HSplitContainer/SettingsHost/ClipSettings/HBoxContainer" unique_id=1808469789]
+[node name="ClipPropertiesLabel" type="RichTextLabel" parent="HSplitContainer/SettingsHost/ClipSettings/HBoxContainer" unique_id=1442358785]
 layout_mode = 2
 size_flags_horizontal = 3
+bbcode_enabled = true
+text = "[b]Clip Properties[/b]"
+fit_content = true
 
 [node name="ClipCloseButton" type="Button" parent="HSplitContainer/SettingsHost/ClipSettings/HBoxContainer" unique_id=941030650]
 layout_mode = 2
 text = "×"
-
-[node name="ClipNameLabel" type="Label" parent="HSplitContainer/SettingsHost/ClipSettings" unique_id=1999598196]
-layout_mode = 2
-text = "Name"
 
 [node name="ClipNameEdit" type="LineEdit" parent="HSplitContainer/SettingsHost/ClipSettings" unique_id=1046997087]
 layout_mode = 2
@@ -200,16 +195,31 @@ value = 0.9
 layout_mode = 2
 size_flags_horizontal = 3
 
-[node name="SongSetting" type="Label" parent="HSplitContainer/SettingsHost/TimelineSettings" unique_id=1823763070]
+[node name="SongSetting" type="RichTextLabel" parent="HSplitContainer/SettingsHost/TimelineSettings" unique_id=325506348]
 layout_mode = 2
-text = "Settings"
+bbcode_enabled = true
+text = "[b]Settings[/b]"
+fit_content = true
 
 [node name="TitleEdit" type="LineEdit" parent="HSplitContainer/SettingsHost/TimelineSettings" unique_id=171303181]
 layout_mode = 2
 text = "Untitled Sequence"
 placeholder_text = "Title"
 
-[node name="BPM" type="VBoxContainer" parent="HSplitContainer/SettingsHost/TimelineSettings" unique_id=1581228407]
+[node name="DefaultBusRow" type="HBoxContainer" parent="HSplitContainer/SettingsHost/TimelineSettings" unique_id=2030351836]
+layout_mode = 2
+
+[node name="DefaultBusLabel" type="Label" parent="HSplitContainer/SettingsHost/TimelineSettings/DefaultBusRow" unique_id=1116598557]
+layout_mode = 2
+text = "Default Bus:"
+
+[node name="DefaultBusOption" type="OptionButton" parent="HSplitContainer/SettingsHost/TimelineSettings/DefaultBusRow" unique_id=770746843]
+layout_mode = 2
+size_flags_horizontal = 3
+text_overrun_behavior = 1
+fit_to_longest_item = false
+
+[node name="BPM" type="HBoxContainer" parent="HSplitContainer/SettingsHost/TimelineSettings" unique_id=1658200314]
 layout_mode = 2
 size_flags_horizontal = 3
 
@@ -219,11 +229,12 @@ text = "BPM"
 
 [node name="BPMSlider" type="SpinBox" parent="HSplitContainer/SettingsHost/TimelineSettings/BPM" unique_id=407472577]
 layout_mode = 2
+size_flags_horizontal = 3
 min_value = 1.0
 max_value = 300.0
 value = 120.0
 
-[node name="Bars" type="VBoxContainer" parent="HSplitContainer/SettingsHost/TimelineSettings" unique_id=476687428]
+[node name="Bars" type="HBoxContainer" parent="HSplitContainer/SettingsHost/TimelineSettings" unique_id=1568191524]
 layout_mode = 2
 size_flags_horizontal = 3
 
@@ -233,6 +244,7 @@ text = "Bars"
 
 [node name="BarsSlider" type="SpinBox" parent="HSplitContainer/SettingsHost/TimelineSettings/Bars" unique_id=1398213056]
 layout_mode = 2
+size_flags_horizontal = 3
 min_value = 1.0
 value = 8.0
 rounded = true
@@ -283,6 +295,7 @@ size_flags_horizontal = 3
 size_flags_vertical = 3
 
 [node name="SelectedTrackSettings" type="VBoxContainer" parent="HSplitContainer/SettingsHost/TimelineSettings/Tracks" unique_id=436867217]
+visible = false
 layout_mode = 2
 
 [node name="SelectedTrackSettingsHeader" type="HBoxContainer" parent="HSplitContainer/SettingsHost/TimelineSettings/Tracks/SelectedTrackSettings" unique_id=1292126575]
@@ -310,6 +323,15 @@ text = "Bus:"
 [node name="TrackBusOverrideOption" type="OptionButton" parent="HSplitContainer/SettingsHost/TimelineSettings/Tracks/SelectedTrackSettings/TrackBusOverrideRow" unique_id=267258288]
 layout_mode = 2
 size_flags_horizontal = 3
+disabled = true
+text_overrun_behavior = 1
+selected = 0
+fit_to_longest_item = false
+item_count = 2
+popup/item_0/text = "Default (Master)"
+popup/item_0/id = 0
+popup/item_1/text = "Master"
+popup/item_1/id = 1
 
 [node name="TrackToolbar" type="HBoxContainer" parent="HSplitContainer/SettingsHost/TimelineSettings/Tracks" unique_id=1694568536]
 layout_mode = 2
@@ -466,6 +488,7 @@ metadata/_custom_type_script = "uid://ct22eaxo3fdn8"
 [connection signal="value_changed" from="HSplitContainer/SettingsHost/ClipSettings/ClipLengthSpin" to="." method="_on_clip_length_spin_value_changed"]
 [connection signal="focus_exited" from="HSplitContainer/SettingsHost/TimelineSettings/TitleEdit" to="." method="_on_title_edit_focus_exited"]
 [connection signal="text_submitted" from="HSplitContainer/SettingsHost/TimelineSettings/TitleEdit" to="." method="_on_title_edit_text_submitted"]
+[connection signal="item_selected" from="HSplitContainer/SettingsHost/TimelineSettings/DefaultBusRow/DefaultBusOption" to="." method="_on_default_bus_option_item_selected"]
 [connection signal="value_changed" from="HSplitContainer/SettingsHost/TimelineSettings/BPM/BPMSlider" to="." method="_on_bpm_slider_value_changed"]
 [connection signal="value_changed" from="HSplitContainer/SettingsHost/TimelineSettings/Bars/BarsSlider" to="." method="_on_bars_slider_value_changed"]
 [connection signal="pressed" from="HSplitContainer/SettingsHost/TimelineSettings/Tracks/SelectedTrackSettings/SelectedTrackSettingsHeader/SelectedTrackSettingsCloseButton" to="." method="_on_selected_track_settings_close_button_pressed"]
