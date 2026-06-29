@@ -15,6 +15,8 @@ signal clip_stopped(track_index: int, clip_index: int, clip_data: Dictionary, re
 @export var volume: float = 1.0
 @export var audio_bus_override: StringName = &""
 
+var master_group_fade_volume: float = 1.0
+
 var master: Node = null
 var _voice: Node = null
 
@@ -49,7 +51,7 @@ func _refresh_voice_configuration() -> void:
 		track_index,
 		timing_offset_subdivisions,
 		pitch_offset_semitones,
-		volume,
+		get_effective_volume(),
 		audio_bus_override
 	)
 
@@ -71,6 +73,10 @@ func set_pitch_offset(value: float) -> void:
 
 func set_voice_volume(value: float) -> void:
 	volume = max(0.0, value)
+	refresh_runtime_setup()
+
+func set_master_group_fade_volume(value: float) -> void:
+	master_group_fade_volume = clamp(value, 0.0, 1.0)
 	refresh_runtime_setup()
 
 func set_audio_bus_override(value: StringName) -> void:
@@ -153,7 +159,7 @@ func get_pitch_scale_multiplier() -> float:
 	return pow(2.0, pitch_offset_semitones / 12.0)
 
 func get_effective_volume() -> float:
-	return max(0.0, volume)
+	return max(0.0, volume) * clamp(master_group_fade_volume, 0.0, 1.0)
 
 func resolve_audio_bus() -> StringName:
 	if not audio_bus_override.is_empty():
