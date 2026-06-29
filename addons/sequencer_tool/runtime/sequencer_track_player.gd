@@ -8,12 +8,25 @@ signal master_position_synced(previous_position: float, current_position: float)
 signal clip_started(track_index: int, clip_index: int, clip_data: Dictionary)
 signal clip_stopped(track_index: int, clip_index: int, clip_data: Dictionary, reason: StringName)
 
+@export_group("Master Sync")
 @export var master_path: NodePath
-@export var track_index: int = 0
-@export var timing_offset_subdivisions: float = 0.0
-@export var pitch_offset_semitones: float = 0.0
-@export var volume: float = 1.0
+
+@export_group("Track Voice")
+@export_range(0, 128, 1, "or_greater") var track_index: int = 0
+@export_range(0.0, 3.0, 0.01, "or_greater") var volume: float = 1.0
 @export var audio_bus_override: StringName = &""
+
+@export_group("Offsets")
+@export_range(-64.0, 64.0, 0.01, "or_less", "or_greater") var timing_offset_subdivisions: float = 0.0
+@export_range(-48.0, 48.0, 0.01, "or_less", "or_greater") var pitch_offset_semitones: float = 0.0
+
+@export_group("Random Timing Variation")
+@export_range(0.0, 2.0, 0.001, "or_greater", "suffix:s") var random_timing_delay_min_seconds: float = 0.0
+@export_range(0.0, 2.0, 0.001, "or_greater", "suffix:s") var random_timing_delay_max_seconds: float = 0.0
+
+@export_group("Random Pitch Variation")
+@export_range(-2.0, 2.0, 0.01, "or_less", "or_greater", "suffix:st") var random_pitch_offset_min_semitones: float = 0.0
+@export_range(-2.0, 2.0, 0.01, "or_less", "or_greater", "suffix:st") var random_pitch_offset_max_semitones: float = 0.0
 
 var master_group_fade_volume: float = 1.0
 
@@ -52,7 +65,11 @@ func _refresh_voice_configuration() -> void:
 		timing_offset_subdivisions,
 		pitch_offset_semitones,
 		get_effective_volume(),
-		audio_bus_override
+		audio_bus_override,
+		random_timing_delay_min_seconds,
+		random_timing_delay_max_seconds,
+		random_pitch_offset_min_semitones,
+		random_pitch_offset_max_semitones
 	)
 
 func refresh_runtime_setup() -> void:
@@ -69,6 +86,16 @@ func set_timing_offset(value: float) -> void:
 
 func set_pitch_offset(value: float) -> void:
 	pitch_offset_semitones = value
+	refresh_runtime_setup()
+
+func set_random_timing_delay_range(min_seconds: float, max_seconds: float) -> void:
+	random_timing_delay_min_seconds = max(0.0, min_seconds)
+	random_timing_delay_max_seconds = max(random_timing_delay_min_seconds, max_seconds)
+	refresh_runtime_setup()
+
+func set_random_pitch_offset_range(min_semitones: float, max_semitones: float) -> void:
+	random_pitch_offset_min_semitones = min(min_semitones, max_semitones)
+	random_pitch_offset_max_semitones = max(min_semitones, max_semitones)
 	refresh_runtime_setup()
 
 func set_voice_volume(value: float) -> void:

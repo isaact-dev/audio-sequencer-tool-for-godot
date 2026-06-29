@@ -8,6 +8,13 @@ var pitch_offset_semitones: float = 0.0
 var volume: float = 1.0
 var audio_bus_override: StringName = &""
 
+var random_timing_delay_min_seconds: float = 0.0
+var random_timing_delay_max_seconds: float = 0.0
+var _pending_clip_triggers: Array[Dictionary] = []
+
+var random_pitch_offset_min_semitones: float = 0.0
+var random_pitch_offset_max_semitones: float = 0.0
+
 var _audio_player: AudioStreamPlayer = null
 var _audio_stream_cache: Dictionary = {}
 var _active_clip_index: int = -1
@@ -25,8 +32,12 @@ signal clip_stopped(track_index: int, clip_index: int, clip_data: Dictionary, re
 func _ready() -> void:
 	set_process(false)
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
+	_update_pending_clip_triggers(delta)
 	_update_active_audio()
+
+	if _pending_clip_triggers.is_empty() and _active_clip_index < 0:
+		set_process(false)
 
 func configure(
 	owner_master: Node,
@@ -35,7 +46,11 @@ func configure(
 	voice_timing_offset_subdivisions: float = 0.0,
 	voice_pitch_offset_semitones: float = 0.0,
 	voice_volume: float = 1.0,
-	voice_audio_bus_override: StringName = &""
+	voice_audio_bus_override: StringName = &"",
+	voice_random_timing_delay_min_seconds: float = 0.0,
+	voice_random_timing_delay_max_seconds: float = 0.0,
+	voice_random_pitch_offset_min_semitones: float = 0.0,
+	voice_random_pitch_offset_max_semitones: float = 0.0
 ) -> void:
 	master = owner_master
 	sequence = owner_sequence
@@ -44,6 +59,16 @@ func configure(
 	pitch_offset_semitones = voice_pitch_offset_semitones
 	volume = voice_volume
 	audio_bus_override = voice_audio_bus_override
+	random_timing_delay_min_seconds = max(0.0, voice_random_timing_delay_min_seconds)
+	random_timing_delay_max_seconds = max(random_timing_delay_min_seconds, voice_random_timing_delay_max_seconds)
+	random_pitch_offset_min_semitones = min(
+		voice_random_pitch_offset_min_semitones,
+		voice_random_pitch_offset_max_semitones
+	)
+	random_pitch_offset_max_semitones = max(
+		voice_random_pitch_offset_min_semitones,
+		voice_random_pitch_offset_max_semitones
+	)
 
 func sync_from_master(previous_position: float, current_position: float) -> void:
 	var local_previous_position := previous_position + timing_offset_subdivisions
@@ -67,6 +92,7 @@ func stop_audio(reason: StringName = &"stopped") -> void:
 	_active_clip_index = -1
 	_active_clip_end_time = 0.0
 	_active_clip_data = {}
+	_pending_clip_triggers.clear()
 	set_process(false)
 
 	if _audio_player != null and is_instance_valid(_audio_player):
@@ -90,6 +116,15 @@ func clear_audio_stream_cache() -> void:
 
 func get_pitch_scale_multiplier() -> float:
 	return pow(2.0, pitch_offset_semitones / 12.0)
+
+func _get_random_pitch_offset_semitones() -> float:
+	if is_equal_approx(random_pitch_offset_min_semitones, random_pitch_offset_max_semitones):
+		return random_pitch_offset_min_semitones
+
+	return randf_range(random_pitch_offset_min_semitones, random_pitch_offset_max_semitones)
+
+func _get_random_pitch_scale_multiplier() -> float:
+	return pow(2.0, _get_random_pitch_offset_semitones() / 12.0)
 
 func get_effective_volume() -> float:
 	return max(0.0, volume)
@@ -263,7 +298,7 @@ func _trigger_clip_at_position(position: float) -> void:
 		if remaining_duration_seconds <= 0.0:
 			continue
 
-		_play_clip(clip_index, clip, offset_seconds, remaining_duration_seconds)
+		_queue_or_play_clip(clip_index, clip, offset_seconds, remaining_duration_seconds)
 		return
 
 func _trigger_clip_starts_in_range(start_position: float, end_position: float, include_start: bool = false) -> void:
@@ -290,7 +325,66 @@ func _trigger_clip_starts_in_range(start_position: float, end_position: float, i
 		_last_triggered_clip_index = clip_index
 		_last_triggered_frame = process_frame
 
-		_play_clip(clip_index, clip)
+		_queue_or_play_clip(clip_index, clip)
+
+func _get_random_timing_delay_seconds() -> float:
+	if random_timing_delay_max_seconds <= EPSILON:
+		return 0.0
+
+	var min_delay := max(0.0, random_timing_delay_min_seconds)
+	var max_delay := max(min_delay, random_timing_delay_max_seconds)
+
+	if is_equal_approx(min_delay, max_delay):
+		return min_delay
+
+	return randf_range(min_delay, max_delay)
+
+func _queue_or_play_clip(
+	clip_index: int,
+	clip: Dictionary,
+	start_offset_seconds: float = 0.0,
+	preview_duration_seconds: float = -1.0
+) -> void:
+	var delay_seconds := _get_random_timing_delay_seconds()
+
+	if delay_seconds <= EPSILON:
+		_play_clip(clip_index, clip, start_offset_seconds, preview_duration_seconds)
+		return
+
+	_pending_clip_triggers.append({
+		"remaining_seconds": delay_seconds,
+		"clip_index": clip_index,
+		"clip": clip.duplicate(true),
+		"start_offset_seconds": start_offset_seconds,
+		"preview_duration_seconds": preview_duration_seconds
+	})
+
+	set_process(true)
+
+func _update_pending_clip_triggers(delta: float) -> void:
+	if _pending_clip_triggers.is_empty():
+		return
+
+	for i in range(_pending_clip_triggers.size() - 1, -1, -1):
+		var pending := _pending_clip_triggers[i]
+		var remaining_seconds := float(pending.get("remaining_seconds", 0.0)) - delta
+
+		if remaining_seconds > 0.0:
+			pending["remaining_seconds"] = remaining_seconds
+			_pending_clip_triggers[i] = pending
+			continue
+
+		_pending_clip_triggers.remove_at(i)
+
+		if _is_track_muted():
+			continue
+
+		_play_clip(
+			int(pending.get("clip_index", -1)),
+			pending.get("clip", {}),
+			float(pending.get("start_offset_seconds", 0.0)),
+			float(pending.get("preview_duration_seconds", -1.0))
+		)
 
 func _play_clip(
 	clip_index: int,
@@ -306,10 +400,18 @@ func _play_clip(
 	if audio_stream == null:
 		return
 
+	if _is_track_muted():
+			stop_audio(&"muted")
+			return
+
 	_ensure_audio_player()
 
 	var clip_playback_speed := max(0.001, float(clip.get("playback_speed", 1.0)))
-	var playback_pitch_scale = clip_playback_speed * get_pitch_scale_multiplier()
+	var random_pitch_multiplier := 1.0
+	if start_offset_seconds <= EPSILON:
+		random_pitch_multiplier = _get_random_pitch_scale_multiplier()
+
+	var playback_pitch_scale = clip_playback_speed * get_pitch_scale_multiplier() * random_pitch_multiplier
 	var resolved_start_offset_seconds = _get_clip_source_start_offset_seconds(clip) + max(0.0, start_offset_seconds)
 
 	var resolved_duration_seconds := preview_duration_seconds
