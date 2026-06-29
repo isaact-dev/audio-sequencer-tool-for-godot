@@ -57,6 +57,7 @@ extends VBoxContainer
 @onready var group_name_edit = $HSplitContainer/TrackGroupsPanel/MarginContainer/TrackGroupsContent/GroupNameRow/GroupNameEdit
 @onready var group_tracks_menu_button = $HSplitContainer/TrackGroupsPanel/MarginContainer/TrackGroupsContent/GroupTracksRow/GroupTracksMenuButton
 @onready var group_bus_option = $HSplitContainer/TrackGroupsPanel/MarginContainer/TrackGroupsContent/GroupBusRow/GroupBusOption
+@onready var preview_group_option = $StatusBar/PreviewGroupOption
 
 var editor_undo_redo: EditorUndoRedoManager = null
 
@@ -84,6 +85,7 @@ var drag_hover_track_index: int = -1
 var drag_insert_after: bool = false
 
 var selected_group_name: String = ""
+var active_preview_group_name: String = ""
 var _updating_group_editor_ui: bool = false
 
 const TRACK_ROW_HEIGHT := 28
@@ -170,6 +172,7 @@ func _ready() -> void:
 	_update_title_text()
 	_refresh_playback_locked_ui()
 	unsaved_changes_confirm_dialog.add_button("Don't save",true,"DSAVE")
+	_refresh_groups_panel_ui()
 
 func set_editor_undo_redo(value: EditorUndoRedoManager) -> void:
 	editor_undo_redo = value
@@ -704,6 +707,7 @@ func _get_group_bus_override(group_name: String) -> StringName:
 
 func _refresh_groups_panel_ui() -> void:
 	_refresh_group_option()
+	_refresh_preview_group_option()
 	_refresh_selected_group_editor()
 
 func _refresh_group_option() -> void:
@@ -741,6 +745,33 @@ func _refresh_group_option() -> void:
 	group_delete_button.disabled = playback_locked or selected_group_name.is_empty()
 
 	_updating_group_editor_ui = false
+
+func _refresh_preview_group_option() -> void:
+	preview_group_option.clear()
+
+	preview_group_option.add_item("All tracks")
+	preview_group_option.set_item_metadata(0, "")
+
+	var groups := _get_track_groups_from_timeline()
+
+	if not active_preview_group_name.is_empty() and not groups.has(active_preview_group_name):
+		_apply_active_preview_group_name("")
+
+	var group_names := groups.keys()
+	group_names.sort()
+
+	for group_name_value in group_names:
+		var group_name := str(group_name_value)
+		preview_group_option.add_item(group_name)
+		preview_group_option.set_item_metadata(preview_group_option.item_count - 1, group_name)
+
+	var selected_index := 0
+	for option_index in range(preview_group_option.item_count):
+		if str(preview_group_option.get_item_metadata(option_index)) == active_preview_group_name:
+			selected_index = option_index
+			break
+
+	preview_group_option.select(selected_index)
 
 func _refresh_selected_group_editor() -> void:
 	_updating_group_editor_ui = true
@@ -878,6 +909,15 @@ func _refresh_group_tracks_menu_button_text() -> void:
 		group_tracks_menu_button.text = ", ".join(selected_names)
 	else:
 		group_tracks_menu_button.text = "%d tracks" % selected_names.size()
+
+func _apply_active_preview_group_name(group_name: String) -> void:
+	active_preview_group_name = group_name
+
+	if audio_preview_controller != null and audio_preview_controller.has_method("set_active_preview_group"):
+		audio_preview_controller.set_active_preview_group(StringName(active_preview_group_name))
+
+	if timeline != null and timeline.has_method("set_active_preview_group"):
+		timeline.set_active_preview_group(StringName(active_preview_group_name))
 
 
 #Track row drag helpers
@@ -1104,6 +1144,14 @@ func _on_bpm_slider_value_changed(value):
 
 func _on_loop_check_box_toggled(toggled_on: bool) -> void:
 	timeline.set_loop_enabled(toggled_on)
+
+func _on_preview_group_option_item_selected(index: int) -> void:
+	if index < 0 or index >= preview_group_option.item_count:
+		return
+
+	var group_name := str(preview_group_option.get_item_metadata(index))
+	_apply_active_preview_group_name(group_name)
+	_refresh_preview_group_option()
 
 func _on_title_edit_text_submitted(new_text) -> void:
 	sequence_title_edit.release_focus()
@@ -1419,6 +1467,8 @@ func _on_group_delete_button_pressed() -> void:
 		return
 
 	groups.erase(selected_group_name)
+	if active_preview_group_name == selected_group_name:
+		_apply_active_preview_group_name("")
 	selected_group_name = ""
 
 	_commit_track_groups_to_timeline(groups)
@@ -1457,6 +1507,8 @@ func _on_group_name_edit_focus_exited() -> void:
 	var group_data = groups[selected_group_name]
 	groups.erase(selected_group_name)
 	groups[new_name] = group_data
+	if active_preview_group_name == selected_group_name:
+		_apply_active_preview_group_name(new_name)
 	selected_group_name = new_name
 
 	_commit_track_groups_to_timeline(groups)

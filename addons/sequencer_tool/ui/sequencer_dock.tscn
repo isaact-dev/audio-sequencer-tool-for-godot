@@ -81,6 +81,20 @@ text = "Selected: None | Start: - | Length: - | Snap: On"
 layout_mode = 2
 size_flags_horizontal = 3
 
+[node name="StatusSpacer2" type="Control" parent="StatusBar" unique_id=122471518]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="StatusSpacer3" type="Control" parent="StatusBar" unique_id=945686182]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="PreviewGroupOption" type="OptionButton" parent="StatusBar" unique_id=1906658934]
+layout_mode = 2
+size_flags_horizontal = 3
+text_overrun_behavior = 1
+fit_to_longest_item = false
+
 [node name="LoopCheckBox" type="CheckBox" parent="StatusBar" unique_id=581786267]
 layout_mode = 2
 size_flags_horizontal = 8
@@ -572,6 +586,7 @@ metadata/_custom_type_script = "uid://rqj1dbbg8utm"
 [connection signal="pressed" from="ToolBar/ButtonAddClip" to="." method="_on_button_add_clip_pressed"]
 [connection signal="pressed" from="ToolBar/ButtonDeleteClip" to="." method="_on_button_delete_clip_pressed"]
 [connection signal="pressed" from="ToolBar/ButtonGroups" to="." method="_on_button_groups_pressed"]
+[connection signal="item_selected" from="StatusBar/PreviewGroupOption" to="." method="_on_preview_group_option_item_selected"]
 [connection signal="toggled" from="StatusBar/LoopCheckBox" to="." method="_on_loop_check_box_toggled"]
 [connection signal="pressed" from="HSplitContainer/SettingsHost/ClipSettings/HBoxContainer/ClipCloseButton" to="." method="_on_clip_close_button_pressed"]
 [connection signal="focus_exited" from="HSplitContainer/SettingsHost/ClipSettings/ClipNameEdit" to="." method="_on_clip_name_edit_focus_exited"]

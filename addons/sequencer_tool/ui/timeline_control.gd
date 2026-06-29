@@ -38,8 +38,8 @@ var header_separator_color := Color(0.0, 0.0, 0.0, 0.45)
 
 var lane_color_a := Color(0.14, 0.14, 0.16)
 var lane_color_b := Color(0.12, 0.12, 0.14)
-var muted_lane_overlay_color := Color(0.0, 0.0, 0.0, 0.325)
-var muted_clip_overlay_color := Color(0.0, 0.0, 0.0, 0.455)
+var muted_lane_overlay_color := Color(0.0, 0.0, 0.0, 0.525)
+var muted_clip_overlay_color := Color(0.0, 0.0, 0.0, 0.655)
 var muted_track_text_color := Color(0.58, 0.58, 0.62)
 
 var subdivision_line_color := Color(0.20, 0.20, 0.24)
@@ -127,6 +127,7 @@ var pending_clip_insertion_context: Dictionary = {}
 
 var clip_clipboard: Array[Dictionary] = []
 
+var active_preview_group: StringName = &""
 
 #Lifecycle
 func _ready() -> void:
@@ -305,6 +306,9 @@ func get_track_muted(track_index: int) -> bool:
 	if track_index < 0 or track_index >= track_mutes.size():
 		return false
 	return track_mutes[track_index]
+
+func _is_track_visually_dimmed(track_index: int) -> bool:
+	return get_track_muted(track_index) or not _is_track_enabled_for_active_preview_group(track_index)
 
 func get_track_volume(track_index: int) -> float:
 	if track_index < 0 or track_index >= track_volumes.size():
@@ -504,6 +508,27 @@ func set_track_groups(value: Dictionary) -> void:
 	editor_undo_redo.add_do_method(self, "_apply_track_groups", sanitized)
 	editor_undo_redo.add_undo_method(self, "_apply_track_groups", previous_groups)
 	editor_undo_redo.commit_action()
+
+func _is_track_enabled_for_active_preview_group(track_index: int) -> bool:
+	if active_preview_group.is_empty():
+		return true
+
+	if not track_groups.has(active_preview_group):
+		return true
+
+	var group_data = track_groups[active_preview_group]
+	if not group_data is Dictionary:
+		return true
+
+	var raw_indices = (group_data as Dictionary).get("track_indices", [])
+	if not raw_indices is Array:
+		return true
+
+	for value in raw_indices:
+		if int(value) == track_index:
+			return true
+
+	return false
 
 func _build_track_state_snapshot() -> Dictionary:
 	var clips_snapshot: Array[Dictionary] = []
@@ -1315,6 +1340,9 @@ func set_bpm(value: float) -> void:
 	editor_undo_redo.add_undo_method(self, "_apply_bpm_state_snapshot", before_state)
 	editor_undo_redo.commit_action()
 
+func set_active_preview_group(group_name: StringName) -> void:
+	active_preview_group = group_name
+	queue_redraw()
 
 #Input/process
 func _gui_input(event: InputEvent) -> void:
@@ -2990,7 +3018,7 @@ func _draw_track_lanes() -> void:
 		var color := lane_color_a if track_index % 2 == 0 else lane_color_b
 		draw_rect(Rect2(0, y, size.x, lane_height), color, true)
 
-		if get_track_muted(track_index):
+		if _is_track_visually_dimmed(track_index):
 			draw_rect(Rect2(0, y, size.x, lane_height), muted_lane_overlay_color, true)
 
 		draw_line(
@@ -3052,7 +3080,7 @@ func _draw_track_names() -> void:
 			track_name = track_names[track_index]
 
 		var track_text_color := bar_number_color
-		if get_track_muted(track_index):
+		if _is_track_visually_dimmed(track_index):
 			track_text_color = muted_track_text_color
 
 		var text_position := Vector2(
@@ -3167,7 +3195,7 @@ func _draw_clips() -> void:
 			_draw_clip_waveform(rect, clip)
 		if is_clip_audio_source_missing(clip):
 			_draw_missing_audio_warning_on_clip(rect)
-		if get_track_muted(track_index):
+		if _is_track_visually_dimmed(track_index):
 			draw_rect(rect, muted_clip_overlay_color, true)
 
 		if selected_clip_indices.has(i):

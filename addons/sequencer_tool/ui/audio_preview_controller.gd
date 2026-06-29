@@ -11,6 +11,7 @@ var _previewed_clip_indices_this_frame: Dictionary = {}
 var _preview_players: Array[AudioStreamPlayer] = []
 var _active_previews: Array[Dictionary] = []
 var _audio_stream_cache: Dictionary = {}
+var active_preview_group: StringName = &""
 
 const EPSILON := 0.00001
 const SILENT_VOLUME_DB := -80.0
@@ -28,6 +29,10 @@ func set_timeline(value: Control) -> void:
 	previous_playhead_position = float(timeline.playhead_position)
 	was_playing_last_frame = bool(timeline.is_playing)
 	was_scrubbing_playhead_last_frame = bool(timeline.is_scrubbing_playhead)
+
+func set_active_preview_group(group_name: StringName) -> void:
+	active_preview_group = group_name
+	_update_active_previews()
 
 func _ensure_preview_player_pool() -> void:
 	while _preview_players.size() < preview_player_pool_size:
@@ -102,6 +107,9 @@ func _resolve_track_preview_bus(track_index: int) -> StringName:
 	if timeline.has_method("get_track_bus_override"):
 		resolved_bus = timeline.get_track_bus_override(track_index)
 
+	if resolved_bus.is_empty() and _is_track_enabled_for_active_preview_group(track_index):
+		resolved_bus = _get_active_preview_group_bus_override()
+
 	if resolved_bus.is_empty() and timeline.has_method("get_default_audio_bus"):
 		resolved_bus = timeline.get_default_audio_bus()
 
@@ -112,6 +120,58 @@ func _resolve_track_preview_bus(track_index: int) -> StringName:
 		return &"Master"
 
 	return resolved_bus
+
+func _get_preview_track_groups() -> Dictionary:
+	if timeline == null or not timeline.has_method("get_track_groups"):
+		return {}
+	return timeline.get_track_groups()
+
+func _get_active_preview_group_data() -> Dictionary:
+	if active_preview_group.is_empty():
+		return {}
+
+	var groups := _get_preview_track_groups()
+	if not groups.has(active_preview_group):
+		return {}
+
+	var group_data = groups[active_preview_group]
+	if group_data is Dictionary:
+		return (group_data as Dictionary)
+
+	return {}
+
+func _get_active_preview_group_track_indices() -> Array[int]:
+	var result: Array[int] = []
+	var group_data := _get_active_preview_group_data()
+
+	if group_data.is_empty():
+		return result
+
+	var raw_indices = group_data.get("track_indices", [])
+	if raw_indices is Array:
+		for value in raw_indices:
+			var track_index := int(value)
+			if timeline == null or track_index < 0 or track_index >= timeline.track_count:
+				continue
+			if result.has(track_index):
+				continue
+			result.append(track_index)
+
+	result.sort()
+	return result
+
+func _is_track_enabled_for_active_preview_group(track_index: int) -> bool:
+	if active_preview_group.is_empty():
+		return true
+
+	return _get_active_preview_group_track_indices().has(track_index)
+
+func _get_active_preview_group_bus_override() -> StringName:
+	var group_data := _get_active_preview_group_data()
+	if group_data.is_empty():
+		return &""
+
+	return StringName(str(group_data.get("bus_override", "")).strip_edges())
 
 func _get_preview_linear_volume(track_index: int, clip_index: int, fallback_clip_volume: float) -> float:
 	if timeline == null:
@@ -222,6 +282,10 @@ func _update_active_previews() -> void:
 		if track_index < 0 or track_index >= timeline.track_count:
 			_release_preview_player(player)
 			continue
+
+		if not _is_track_enabled_for_active_preview_group(track_index):
+					_release_preview_player(player)
+					continue
 
 		if timeline.get_track_muted(track_index):
 			_release_preview_player(player)
@@ -397,6 +461,9 @@ func _preview_clip(clip_index: int, clip: Dictionary, start_offset_seconds: floa
 
 	var track_index := int(clip.get("track", -1))
 	if track_index < 0 or track_index >= timeline.track_count:
+		return
+
+	if not _is_track_enabled_for_active_preview_group(track_index):
 		return
 
 	if timeline.get_track_muted(track_index):
