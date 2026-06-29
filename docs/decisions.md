@@ -500,3 +500,21 @@ Putting all group controls inside the left settings panel makes the main setting
 
 A separate floating window is also not ideal because it feels disconnected from the editor dock workflow.
 The group editor should feel like part of the sequencer tool, not like a separate tool window.
+
+## 2026-06-29 — Audio bus routing override priority
+
+### Decision
+
+Audio bus routing should resolve from the most specific override to the broadest fallback.
+
+The priority order is:
+1. Runtime/master track override
+2. Authored track bus override
+3. Active group bus override
+4. Sequence default bus
+5. Master/player fallback default bus
+
+### Reasoning
+
+A track-specific override should always win because it represents an explicit routing decision for that individual track.
+A group bus override should apply only to tracks that do not have their own track override. This makes it possible to route a whole active group through shared processing, while still allowing individual tracks to use their own bus.

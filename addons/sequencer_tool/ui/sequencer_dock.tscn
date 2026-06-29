@@ -441,6 +441,7 @@ text = "×"
 layout_mode = 2
 
 [node name="Label" type="Label" parent="HSplitContainer/TrackGroupsPanel/MarginContainer/TrackGroupsContent/GroupNameRow" unique_id=891775761]
+custom_minimum_size = Vector2(65, 0)
 layout_mode = 2
 text = "Name:"
 
@@ -449,10 +450,25 @@ layout_mode = 2
 size_flags_horizontal = 3
 placeholder_text = "Group Name"
 
+[node name="GroupBusRow" type="HBoxContainer" parent="HSplitContainer/TrackGroupsPanel/MarginContainer/TrackGroupsContent" unique_id=1696219056]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="HSplitContainer/TrackGroupsPanel/MarginContainer/TrackGroupsContent/GroupBusRow" unique_id=880330633]
+custom_minimum_size = Vector2(65, 0)
+layout_mode = 2
+text = "Bus:"
+
+[node name="GroupBusOption" type="OptionButton" parent="HSplitContainer/TrackGroupsPanel/MarginContainer/TrackGroupsContent/GroupBusRow" unique_id=2100552753]
+layout_mode = 2
+size_flags_horizontal = 3
+text_overrun_behavior = 1
+fit_to_longest_item = false
+
 [node name="GroupTracksRow" type="HBoxContainer" parent="HSplitContainer/TrackGroupsPanel/MarginContainer/TrackGroupsContent" unique_id=2021449496]
 layout_mode = 2
 
 [node name="Label" type="Label" parent="HSplitContainer/TrackGroupsPanel/MarginContainer/TrackGroupsContent/GroupTracksRow" unique_id=1474216187]
+custom_minimum_size = Vector2(65, 0)
 layout_mode = 2
 text = "Tracks:"
 
@@ -461,6 +477,7 @@ layout_mode = 2
 size_flags_horizontal = 3
 text = "No tracks"
 flat = false
+alignment = 0
 text_overrun_behavior = 1
 
 [node name="NewSequenceDialog" type="ConfirmationDialog" parent="." unique_id=406818455]
@@ -588,6 +605,7 @@ metadata/_custom_type_script = "uid://ct22eaxo3fdn8"
 [connection signal="pressed" from="HSplitContainer/TrackGroupsPanel/MarginContainer/TrackGroupsContent/GroupPickerRow/GroupDeleteButton" to="." method="_on_group_delete_button_pressed"]
 [connection signal="focus_exited" from="HSplitContainer/TrackGroupsPanel/MarginContainer/TrackGroupsContent/GroupNameRow/GroupNameEdit" to="." method="_on_group_name_edit_focus_exited"]
 [connection signal="text_submitted" from="HSplitContainer/TrackGroupsPanel/MarginContainer/TrackGroupsContent/GroupNameRow/GroupNameEdit" to="." method="_on_group_name_edit_text_submitted"]
+[connection signal="item_selected" from="HSplitContainer/TrackGroupsPanel/MarginContainer/TrackGroupsContent/GroupBusRow/GroupBusOption" to="." method="_on_group_bus_option_item_selected"]
 [connection signal="confirmed" from="NewSequenceDialog" to="." method="_on_new_sequence_dialog_confirmed"]
 [connection signal="file_selected" from="OpenSequenceDialog" to="." method="_on_open_sequence_dialog_file_selected"]
 [connection signal="file_selected" from="SaveSequenceDialog" to="." method="_on_save_sequence_dialog_file_selected"]

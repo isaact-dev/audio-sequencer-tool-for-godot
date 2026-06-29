@@ -469,9 +469,16 @@ func _sanitize_track_groups(value: Dictionary) -> Dictionary:
 					track_indices.append(track_index)
 
 		track_indices.sort()
-		sanitized[group_name] = {
+		var sanitized_group := {
 			"track_indices": track_indices
 		}
+
+		if group_data is Dictionary:
+			var bus_override := StringName(str((group_data as Dictionary).get("bus_override", "")).strip_edges())
+			if not bus_override.is_empty():
+				sanitized_group["bus_override"] = bus_override
+
+		sanitized[group_name] = sanitized_group
 
 	return sanitized
 

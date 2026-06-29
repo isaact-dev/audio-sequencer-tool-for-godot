@@ -162,6 +162,17 @@ func resolve_track_bus(track_index: int) -> StringName:
 		return StringName(str(track_bus_overrides[track_index]))
 
 	if sequence != null:
+		var sequence_track_bus := sequence.get_track_bus(track_index)
+		var sequence_default_bus := sequence.get("default_audio_bus")
+
+		if not StringName(str(sequence_track_bus)).is_empty() and StringName(str(sequence_track_bus)) != StringName(str(sequence_default_bus)):
+			return sequence_track_bus
+
+	var group_bus := _get_active_track_group_bus_override()
+	if not group_bus.is_empty():
+		return group_bus
+
+	if sequence != null:
 		return sequence.get_track_bus(track_index)
 
 	return default_audio_bus
@@ -255,6 +266,20 @@ func _get_active_track_group_track_indices() -> Array[int]:
 				return _sanitize_track_indices(track_indices as Array)
 
 	return []
+
+func _get_active_track_group_bus_override() -> StringName:
+	if active_track_group.is_empty():
+		return &""
+
+	var groups := _get_active_track_groups()
+	if not groups.has(active_track_group):
+		return &""
+
+	var group_data = groups[active_track_group]
+	if not group_data is Dictionary:
+		return &""
+
+	return StringName(str((group_data as Dictionary).get("bus_override", "")).strip_edges())
 
 func refresh_runtime_setup() -> void:
 	_internal_track_indices_signature = "__force_refresh__"

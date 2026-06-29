@@ -56,6 +56,7 @@ extends VBoxContainer
 @onready var group_delete_button = $HSplitContainer/TrackGroupsPanel/MarginContainer/TrackGroupsContent/GroupPickerRow/GroupDeleteButton
 @onready var group_name_edit = $HSplitContainer/TrackGroupsPanel/MarginContainer/TrackGroupsContent/GroupNameRow/GroupNameEdit
 @onready var group_tracks_menu_button = $HSplitContainer/TrackGroupsPanel/MarginContainer/TrackGroupsContent/GroupTracksRow/GroupTracksMenuButton
+@onready var group_bus_option = $HSplitContainer/TrackGroupsPanel/MarginContainer/TrackGroupsContent/GroupBusRow/GroupBusOption
 
 var editor_undo_redo: EditorUndoRedoManager = null
 
@@ -689,6 +690,18 @@ func _get_group_track_indices(group_name: String) -> Array:
 	result.sort()
 	return result
 
+func _get_group_bus_override(group_name: String) -> StringName:
+	var groups := _get_track_groups_from_timeline()
+
+	if not groups.has(group_name):
+		return &""
+
+	var group_data = groups[group_name]
+	if not group_data is Dictionary:
+		return &""
+
+	return StringName(str((group_data as Dictionary).get("bus_override", "")).strip_edges())
+
 func _refresh_groups_panel_ui() -> void:
 	_refresh_group_option()
 	_refresh_selected_group_editor()
@@ -743,12 +756,18 @@ func _refresh_selected_group_editor() -> void:
 	if not has_selection:
 		group_name_edit.text = ""
 		group_tracks_menu_button.text = "No group selected"
+		_refresh_group_bus_options(&"")
+		group_bus_option.disabled = true
 		_refresh_group_tracks_popup()
 		_updating_group_editor_ui = false
 		return
 
 	if not group_name_edit.has_focus():
 		group_name_edit.text = selected_group_name
+
+	var group_bus_override := _get_group_bus_override(selected_group_name)
+	_refresh_group_bus_options(group_bus_override)
+	group_bus_option.disabled = playback_locked
 
 	_refresh_group_tracks_popup()
 	_refresh_group_tracks_menu_button_text()
@@ -776,6 +795,34 @@ func _refresh_group_tracks_popup() -> void:
 
 		popup.add_check_item(track_name, track_index)
 		popup.set_item_checked(popup.get_item_index(track_index), group_track_indices.has(track_index))
+
+func _refresh_group_bus_options(selected_bus: StringName = &"") -> void:
+	group_bus_option.clear()
+
+	var default_bus := &""
+	if timeline != null and timeline.has_method("get_default_audio_bus"):
+		default_bus = timeline.get_default_audio_bus()
+
+	var default_label := "Default"
+	if not default_bus.is_empty():
+		default_label = "Default (%s)" % str(default_bus)
+
+	group_bus_option.add_item(default_label)
+	group_bus_option.set_item_metadata(0, &"")
+
+	for bus_index in range(AudioServer.get_bus_count()):
+		var bus_name := StringName(AudioServer.get_bus_name(bus_index))
+		group_bus_option.add_item(str(bus_name))
+		group_bus_option.set_item_metadata(group_bus_option.item_count - 1, bus_name)
+
+	var selected_index := 0
+	for option_index in range(group_bus_option.item_count):
+		var option_bus := StringName(str(group_bus_option.get_item_metadata(option_index)))
+		if option_bus == selected_bus:
+			selected_index = option_index
+			break
+
+	group_bus_option.select(selected_index)
 
 func _on_group_tracks_popup_id_pressed(track_index: int) -> void:
 	if _updating_group_editor_ui:
@@ -1445,6 +1492,42 @@ func _on_group_track_membership_toggled(enabled: bool, group_name: String, track
 	_commit_track_groups_to_timeline(groups)
 	_refresh_groups_panel_ui()
 
+func _on_group_bus_option_item_selected(index: int) -> void:
+	if _updating_group_editor_ui:
+		return
+	if selected_group_name.is_empty():
+		return
+	if timeline == null:
+		return
+	if timeline.is_playing:
+		if timeline.has_method("_is_editing_blocked_by_playback"):
+			timeline._is_editing_blocked_by_playback(true)
+		_refresh_selected_group_editor()
+		return
+	if index < 0 or index >= group_bus_option.item_count:
+		return
+
+	var groups := _get_track_groups_from_timeline()
+	if not groups.has(selected_group_name):
+		return
+
+	var group_data := {}
+	if groups[selected_group_name] is Dictionary:
+		group_data = (groups[selected_group_name] as Dictionary).duplicate(true)
+
+	var bus_name := StringName(str(group_bus_option.get_item_metadata(index)).strip_edges())
+
+	if bus_name.is_empty():
+		group_data.erase("bus_override")
+	else:
+		group_data["bus_override"] = bus_name
+
+	if not group_data.has("track_indices"):
+		group_data["track_indices"] = _get_group_track_indices(selected_group_name)
+
+	groups[selected_group_name] = group_data
+	_commit_track_groups_to_timeline(groups)
+	_refresh_groups_panel_ui()
 
 #Timeline signal handlers
 func _on_timeline_control_tracks_changed(track_names: Array) -> void:
