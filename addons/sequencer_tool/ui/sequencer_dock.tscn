@@ -93,7 +93,11 @@ size_flags_horizontal = 3
 layout_mode = 2
 size_flags_horizontal = 3
 text_overrun_behavior = 1
+selected = 0
 fit_to_longest_item = false
+item_count = 1
+popup/item_0/text = "All tracks"
+popup/item_0/id = 0
 
 [node name="LoopCheckBox" type="CheckBox" parent="StatusBar" unique_id=581786267]
 layout_mode = 2
@@ -441,6 +445,7 @@ layout_mode = 2
 [node name="GroupOption" type="OptionButton" parent="HSplitContainer/TrackGroupsPanel/MarginContainer/TrackGroupsContent/GroupPickerRow" unique_id=1862569936]
 layout_mode = 2
 size_flags_horizontal = 3
+disabled = true
 text_overrun_behavior = 1
 fit_to_longest_item = false
 
@@ -450,6 +455,7 @@ text = "+"
 
 [node name="GroupDeleteButton" type="Button" parent="HSplitContainer/TrackGroupsPanel/MarginContainer/TrackGroupsContent/GroupPickerRow" unique_id=561339269]
 layout_mode = 2
+disabled = true
 text = "×"
 
 [node name="GroupNameRow" type="HBoxContainer" parent="HSplitContainer/TrackGroupsPanel/MarginContainer/TrackGroupsContent" unique_id=1950412809]
@@ -464,6 +470,7 @@ text = "Name:"
 layout_mode = 2
 size_flags_horizontal = 3
 placeholder_text = "Group Name"
+editable = false
 
 [node name="GroupBusRow" type="HBoxContainer" parent="HSplitContainer/TrackGroupsPanel/MarginContainer/TrackGroupsContent" unique_id=1696219056]
 layout_mode = 2
@@ -476,8 +483,15 @@ text = "Bus:"
 [node name="GroupBusOption" type="OptionButton" parent="HSplitContainer/TrackGroupsPanel/MarginContainer/TrackGroupsContent/GroupBusRow" unique_id=2100552753]
 layout_mode = 2
 size_flags_horizontal = 3
+disabled = true
 text_overrun_behavior = 1
+selected = 0
 fit_to_longest_item = false
+item_count = 2
+popup/item_0/text = "Default (Master)"
+popup/item_0/id = 0
+popup/item_1/text = "Master"
+popup/item_1/id = 1
 
 [node name="GroupTracksRow" type="HBoxContainer" parent="HSplitContainer/TrackGroupsPanel/MarginContainer/TrackGroupsContent" unique_id=2021449496]
 layout_mode = 2
@@ -490,10 +504,24 @@ text = "Tracks:"
 [node name="GroupTracksMenuButton" type="MenuButton" parent="HSplitContainer/TrackGroupsPanel/MarginContainer/TrackGroupsContent/GroupTracksRow" unique_id=1528589837]
 layout_mode = 2
 size_flags_horizontal = 3
-text = "No tracks"
+disabled = true
+text = "No group selected"
 flat = false
 alignment = 0
 text_overrun_behavior = 1
+item_count = 4
+popup/item_0/text = "Track 1"
+popup/item_0/checkable = 1
+popup/item_0/id = 0
+popup/item_1/text = "Track 2"
+popup/item_1/checkable = 1
+popup/item_1/id = 1
+popup/item_2/text = "Track 3"
+popup/item_2/checkable = 1
+popup/item_2/id = 2
+popup/item_3/text = "Track 4"
+popup/item_3/checkable = 1
+popup/item_3/id = 3
 
 [node name="NewSequenceDialog" type="ConfirmationDialog" parent="." unique_id=406818455]
 title = "New Sequence"
@@ -571,6 +599,9 @@ script = ExtResource("3_s45hi")
 
 [node name="SequencerMasterPlayer" type="Node" parent="." unique_id=194503501]
 script = ExtResource("4_jd8ou")
+loop_enabled = null
+internal_track_indices = null
+default_audio_bus = null
 metadata/_custom_type_script = "uid://ct22eaxo3fdn8"
 
 [node name="SequencerTrackPlayer" type="Node" parent="." unique_id=452416662]

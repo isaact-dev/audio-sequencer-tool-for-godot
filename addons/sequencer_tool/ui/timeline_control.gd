@@ -442,6 +442,120 @@ func set_track_bus_override(track_index: int, bus_name: StringName) -> void:
 func get_track_groups() -> Dictionary:
 	return track_groups.duplicate(true)
 
+func _remap_track_groups_after_track_removed(removed_track_index: int) -> void:
+	var remapped_groups: Dictionary = {}
+
+	for group_name in track_groups.keys():
+		var group_data = track_groups[group_name]
+		if not group_data is Dictionary:
+			continue
+
+		var raw_indices = (group_data as Dictionary).get("track_indices", [])
+		var remapped_indices: Array[int] = []
+
+		if raw_indices is Array:
+			for value in raw_indices:
+				var track_index := int(value)
+
+				if track_index == removed_track_index:
+					continue
+
+				if track_index > removed_track_index:
+					track_index -= 1
+
+				if track_index < 0 or track_index >= track_count:
+					continue
+
+				if not remapped_indices.has(track_index):
+					remapped_indices.append(track_index)
+
+		remapped_indices.sort()
+
+		var remapped_group := (group_data as Dictionary).duplicate(true)
+		remapped_group["track_indices"] = remapped_indices
+		remapped_groups[group_name] = remapped_group
+
+	track_groups = remapped_groups
+
+func _remap_track_groups_after_track_moved(from_index: int, to_index: int) -> void:
+	if from_index == to_index:
+		return
+
+	var remapped_groups: Dictionary = {}
+
+	for group_name in track_groups.keys():
+		var group_data = track_groups[group_name]
+		if not group_data is Dictionary:
+			continue
+
+		var raw_indices = (group_data as Dictionary).get("track_indices", [])
+		var remapped_indices: Array[int] = []
+
+		if raw_indices is Array:
+			for value in raw_indices:
+				var track_index := int(value)
+
+				if track_index == from_index:
+					track_index = to_index
+				elif from_index < to_index and track_index > from_index and track_index <= to_index:
+					track_index -= 1
+				elif from_index > to_index and track_index >= to_index and track_index < from_index:
+					track_index += 1
+
+				if track_index < 0 or track_index >= track_count:
+					continue
+
+				if not remapped_indices.has(track_index):
+					remapped_indices.append(track_index)
+
+		remapped_indices.sort()
+
+		var remapped_group := (group_data as Dictionary).duplicate(true)
+		remapped_group["track_indices"] = remapped_indices
+		remapped_groups[group_name] = remapped_group
+
+	track_groups = remapped_groups
+
+func _remap_track_groups_after_track_duplicated(source_track_index: int, duplicated_track_index: int) -> void:
+	var remapped_groups: Dictionary = {}
+
+	for group_name in track_groups.keys():
+		var group_data = track_groups[group_name]
+		if not group_data is Dictionary:
+			continue
+
+		var raw_indices = (group_data as Dictionary).get("track_indices", [])
+		var remapped_indices: Array[int] = []
+		var source_was_in_group := false
+
+		if raw_indices is Array:
+			for value in raw_indices:
+				var track_index := int(value)
+
+				if track_index == source_track_index:
+					source_was_in_group = true
+
+				if track_index >= duplicated_track_index:
+					track_index += 1
+
+				if track_index < 0 or track_index >= track_count:
+					continue
+
+				if not remapped_indices.has(track_index):
+					remapped_indices.append(track_index)
+
+		if source_was_in_group and duplicated_track_index >= 0 and duplicated_track_index < track_count:
+			if not remapped_indices.has(duplicated_track_index):
+				remapped_indices.append(duplicated_track_index)
+
+		remapped_indices.sort()
+
+		var remapped_group := (group_data as Dictionary).duplicate(true)
+		remapped_group["track_indices"] = remapped_indices
+		remapped_groups[group_name] = remapped_group
+
+	track_groups = remapped_groups
+
 func _sanitize_track_groups(value: Dictionary) -> Dictionary:
 	var sanitized: Dictionary = {}
 
@@ -540,7 +654,8 @@ func _build_track_state_snapshot() -> Dictionary:
 		"track_names": track_names.duplicate(),
 		"track_mutes": track_mutes.duplicate(),
 		"track_volumes": track_volumes.duplicate(),
-		"clips": clips_snapshot
+		"clips": clips_snapshot,
+		"track_groups": track_groups.duplicate(true),
 	}
 
 func _apply_track_state_snapshot(state: Dictionary) -> void:
@@ -557,6 +672,9 @@ func _apply_track_state_snapshot(state: Dictionary) -> void:
 	track_volumes.clear()
 	for volume in state.get("track_volumes", []):
 		track_volumes.append(max(0.0, float(volume)))
+
+	var loaded_track_groups = state.get("track_groups", {})
+	track_groups = _sanitize_track_groups(loaded_track_groups) if loaded_track_groups is Dictionary else {}
 
 	_ensure_track_names_size()
 
@@ -2741,6 +2859,7 @@ func remove_track(track_index: int) -> void:
 	_commit_track_state_change("Delete Track", func() -> void:
 		_remove_track_internal(track_index)
 	)
+	_remap_track_groups_after_track_removed(track_index)
 
 func _rename_track_internal(track_index: int, value: String) -> void:
 	if track_index < 0 or track_index >= track_names.size():
@@ -2800,6 +2919,7 @@ func move_track(from_index: int, to_index: int) -> void:
 	_commit_track_state_change("Move Track", func() -> void:
 		_move_track_internal(from_index, to_index)
 	)
+	_remap_track_groups_after_track_moved(from_index, to_index)
 
 func _duplicate_track_internal(track_index: int) -> void:
 	if track_index < 0 or track_index >= track_count:
@@ -2847,6 +2967,7 @@ func duplicate_track(track_index: int) -> void:
 	_commit_track_state_change("Duplicate Track", func() -> void:
 		_duplicate_track_internal(track_index)
 	)
+	_remap_track_groups_after_track_duplicated(track_index, track_index + 1)
 
 
 #Scroll helpers

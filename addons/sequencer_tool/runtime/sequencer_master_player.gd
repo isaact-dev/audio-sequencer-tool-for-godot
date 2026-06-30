@@ -199,6 +199,9 @@ func clear_track_bus_override(track_index: int) -> void:
 		track_bus_overrides.erase(track_index)
 
 func set_active_track_group(group_name: StringName, fade_seconds: float = -1.0) -> void:
+	if not group_name.is_empty() and not has_track_group(group_name):
+		push_warning("SequencerMasterPlayer: Track group does not exist: %s" % str(group_name))
+		return
 	var previous_group := active_track_group
 	var group_changed := previous_group != group_name
 
@@ -259,14 +262,47 @@ func _get_active_track_groups() -> Dictionary:
 	return {}
 
 func _get_active_track_group_track_indices() -> Array[int]:
+	return get_track_group_track_indices(active_track_group)
+
+func _is_track_active_in_current_group(track_index: int) -> bool:
 	if active_track_group.is_empty():
+		return true
+
+	var active_track_indices := _get_active_track_group_track_indices()
+	return active_track_indices.has(track_index)
+
+func get_active_track_group() -> StringName:
+	return active_track_group
+
+func clear_active_track_group(fade_seconds: float = -1.0) -> void:
+	set_active_track_group(&"", fade_seconds)
+
+func has_track_group(group_name: StringName) -> bool:
+	if group_name.is_empty():
+		return true
+
+	var groups := _get_active_track_groups()
+	return groups.has(group_name)
+
+func get_track_group_names() -> Array[StringName]:
+	var result: Array[StringName] = []
+	var groups := _get_active_track_groups()
+
+	for group_name in groups.keys():
+		result.append(StringName(str(group_name)))
+
+	result.sort()
+	return result
+
+func get_track_group_track_indices(group_name: StringName) -> Array[int]:
+	if group_name.is_empty():
 		return []
 
 	var groups := _get_active_track_groups()
-	if not groups.has(active_track_group):
+	if not groups.has(group_name):
 		return []
 
-	var group_data = groups[active_track_group]
+	var group_data = groups[group_name]
 
 	if group_data is Array:
 		return _sanitize_track_indices(group_data as Array)
@@ -279,13 +315,6 @@ func _get_active_track_group_track_indices() -> Array[int]:
 				return _sanitize_track_indices(track_indices as Array)
 
 	return []
-
-func _is_track_active_in_current_group(track_index: int) -> bool:
-	if active_track_group.is_empty():
-		return true
-
-	var active_track_indices := _get_active_track_group_track_indices()
-	return active_track_indices.has(track_index)
 
 func _get_registered_track_player_track_index(track_player: Node) -> int:
 	if track_player == null or not is_instance_valid(track_player):
