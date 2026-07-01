@@ -44,20 +44,24 @@ func get_track_volume(track_index: int) -> float:
 
 func get_track_bus(track_index: int) -> StringName:
 	if track_bus_overrides.has(track_index):
-		return StringName(str(track_bus_overrides[track_index]))
-
+		var bus_name := StringName(str(track_bus_overrides[track_index]).strip_edges())
+		if not bus_name.is_empty():
+			return bus_name
 	return default_audio_bus
 
 func get_track_clips(track_index: int) -> Array:
 	var result: Array[Dictionary] = []
-
-	for clip in clips:
+	for clip_index in range(clips.size()):
+		var clip := clips[clip_index]
 		if int(clip.get("track", -1)) != track_index:
 			continue
-
-		result.append(clip.duplicate(true))
-
+		var duplicated_clip := clip.duplicate(true)
+		duplicated_clip["_sequence_clip_index"] = clip_index
+		result.append(duplicated_clip)
 	return result
+
+func _get_sequence_clip_index(fallback_clip_index: int, clip: Dictionary) -> int:
+	return int(clip.get("_sequence_clip_index", fallback_clip_index))
 
 func load_from_dictionary(data: Dictionary) -> void:
 	format_version = int(data.get("format_version", data.get("version", FORMAT_VERSION)))

@@ -228,8 +228,11 @@ func resolve_track_bus(track_index: int) -> StringName:
 func set_track_bus_override(track_index: int, bus_name: StringName) -> void:
 	if track_index < 0:
 		return
-
-	track_bus_overrides[track_index] = bus_name
+	var resolved_bus_name := StringName(str(bus_name).strip_edges())
+	if resolved_bus_name.is_empty():
+		track_bus_overrides.erase(track_index)
+	else:
+		track_bus_overrides[track_index] = resolved_bus_name
 
 func clear_track_bus_override(track_index: int) -> void:
 	if track_bus_overrides.has(track_index):
@@ -573,28 +576,28 @@ func _begin_internal_track_group_fade(fade_seconds: float, previous_group: Strin
 			_configure_internal_track_voice_volume(track_index, current_volume)
 
 	for i in range(_registered_track_players.size() - 1, -1, -1):
-			var track_player := _registered_track_players[i]
-			if track_player == null or not is_instance_valid(track_player):
-				_registered_track_players.remove_at(i)
-				continue
+		var track_player := _registered_track_players[i]
+		if track_player == null or not is_instance_valid(track_player):
+			_registered_track_players.remove_at(i)
+			continue
 
-			var is_incoming := _is_registered_track_player_active_in_current_group(track_player)
-			var current_volume := 1.0
-			if _registered_track_player_fade_target_volumes.has(track_player):
-				current_volume = float(_registered_track_player_fade_target_volumes.get(track_player, 1.0))
+		var is_incoming := _is_registered_track_player_active_in_current_group(track_player)
+		var current_volume := 1.0
+		if _registered_track_player_fade_target_volumes.has(track_player):
+			current_volume = float(_registered_track_player_fade_target_volumes.get(track_player, 1.0))
 
-			if is_incoming:
-				_registered_track_player_fade_start_volumes[track_player] = 0.0
-				_registered_track_player_fade_target_volumes[track_player] = 1.0
-				_registered_track_player_fade_is_incoming[track_player] = true
-				_registered_track_player_fade_enabled[track_player] = true
-				_set_registered_track_player_group_fade_volume(track_player, 0.0)
-			else:
-				_registered_track_player_fade_start_volumes[track_player] = current_volume
-				_registered_track_player_fade_target_volumes[track_player] = 0.0
-				_registered_track_player_fade_is_incoming[track_player] = false
-				_registered_track_player_fade_enabled[track_player] = true
-				_set_registered_track_player_group_fade_volume(track_player, current_volume)
+		if is_incoming:
+			_registered_track_player_fade_start_volumes[track_player] = 0.0
+			_registered_track_player_fade_target_volumes[track_player] = 1.0
+			_registered_track_player_fade_is_incoming[track_player] = true
+			_registered_track_player_fade_enabled[track_player] = true
+			_set_registered_track_player_group_fade_volume(track_player, 0.0)
+		else:
+			_registered_track_player_fade_start_volumes[track_player] = current_volume
+			_registered_track_player_fade_target_volumes[track_player] = 0.0
+			_registered_track_player_fade_is_incoming[track_player] = false
+			_registered_track_player_fade_enabled[track_player] = true
+			_set_registered_track_player_group_fade_volume(track_player, current_volume)
 
 	_internal_track_voice_fade_elapsed = 0.0
 	_internal_track_voice_fade_duration = max(0.001, fade_seconds)
@@ -624,25 +627,25 @@ func _update_internal_track_voice_fade(delta: float) -> void:
 		_configure_internal_track_voice_volume(int(track_index), resolved_volume)
 
 	for track_player in _registered_track_player_fade_target_volumes.keys():
-			if track_player == null or not is_instance_valid(track_player):
-				_registered_track_player_fade_start_volumes.erase(track_player)
-				_registered_track_player_fade_target_volumes.erase(track_player)
-				_registered_track_player_fade_is_incoming.erase(track_player)
-				_registered_track_player_fade_enabled.erase(track_player)
-				continue
+		if track_player == null or not is_instance_valid(track_player):
+			_registered_track_player_fade_start_volumes.erase(track_player)
+			_registered_track_player_fade_target_volumes.erase(track_player)
+			_registered_track_player_fade_is_incoming.erase(track_player)
+			_registered_track_player_fade_enabled.erase(track_player)
+			continue
 
-			var start_volume := float(_registered_track_player_fade_start_volumes.get(track_player, 0.0))
-			var target_volume := float(_registered_track_player_fade_target_volumes.get(track_player, 0.0))
-			var is_incoming := bool(_registered_track_player_fade_is_incoming.get(track_player, true))
-			var resolved_volume := 0.0
+		var start_volume := float(_registered_track_player_fade_start_volumes.get(track_player, 0.0))
+		var target_volume := float(_registered_track_player_fade_target_volumes.get(track_player, 0.0))
+		var is_incoming := bool(_registered_track_player_fade_is_incoming.get(track_player, true))
+		var resolved_volume := 0.0
 
-			if is_incoming:
-				var fade_in_amount := _sample_normalized_curve(fade_in_curve, raw_t, raw_t)
-				resolved_volume = lerp(start_volume, target_volume, fade_in_amount)
-			else:
-				var fade_out_volume := _sample_normalized_curve(fade_out_curve, raw_t, 1.0 - raw_t)
-				resolved_volume = start_volume * fade_out_volume
-			_set_registered_track_player_group_fade_volume(track_player, resolved_volume)
+		if is_incoming:
+			var fade_in_amount := _sample_normalized_curve(fade_in_curve, raw_t, raw_t)
+			resolved_volume = lerp(start_volume, target_volume, fade_in_amount)
+		else:
+			var fade_out_volume := _sample_normalized_curve(fade_out_curve, raw_t, 1.0 - raw_t)
+			resolved_volume = start_volume * fade_out_volume
+		_set_registered_track_player_group_fade_volume(track_player, resolved_volume)
 
 	if raw_t < 1.0:
 		return
@@ -732,18 +735,6 @@ func _refresh_registered_track_player_setups() -> void:
 
 		if track_player.has_method("refresh_runtime_setup"):
 			track_player.refresh_runtime_setup()
-
-func _reset_registered_track_players_for_sequence_change() -> void:
-	for i in range(_registered_track_players.size() - 1, -1, -1):
-		var track_player := _registered_track_players[i]
-		if track_player == null or not is_instance_valid(track_player):
-			_registered_track_players.remove_at(i)
-			continue
-
-		if track_player.has_method("handle_master_sequence_changed"):
-			track_player.handle_master_sequence_changed(sequence)
-		elif track_player.has_method("set_track_index"):
-			track_player.set_track_index(0)
 
 func _on_internal_track_voice_clip_started(event_track_index: int, clip_index: int, clip_data: Dictionary, source_voice: Node) -> void:
 	clip_started.emit(event_track_index, clip_index, clip_data, source_voice)

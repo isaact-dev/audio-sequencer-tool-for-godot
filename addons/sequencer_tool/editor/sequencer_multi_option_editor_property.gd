@@ -23,6 +23,13 @@ func _init() -> void:
 
 func _process(_delta: float) -> void:
 	var sequence_instance_id := _get_sequence_instance_id()
+
+	if _last_sequence_instance_id == -2:
+		_last_sequence_instance_id = sequence_instance_id
+		_last_options_signature = _build_options_signature()
+		_update_property()
+		return
+
 	if sequence_instance_id != _last_sequence_instance_id:
 		_last_sequence_instance_id = sequence_instance_id
 		_clear_value_for_sequence_change()

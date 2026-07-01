@@ -167,6 +167,9 @@ func _get_track_clips() -> Array:
 
 	return sequence.get_track_clips(track_index)
 
+func _get_sequence_clip_index(fallback_clip_index: int, clip: Dictionary) -> int:
+	return int(clip.get("_sequence_clip_index", fallback_clip_index))
+
 func _is_track_muted() -> bool:
 	if sequence == null or not sequence.has_method("get_track_muted"):
 		return false
@@ -298,7 +301,7 @@ func _trigger_clip_at_position(position: float) -> void:
 		if remaining_duration_seconds <= 0.0:
 			continue
 
-		_queue_or_play_clip(clip_index, clip, offset_seconds, remaining_duration_seconds)
+		_queue_or_play_clip(_get_sequence_clip_index(clip_index, clip), clip, offset_seconds, remaining_duration_seconds)
 		return
 
 func _trigger_clip_starts_in_range(start_position: float, end_position: float, include_start: bool = false) -> void:
@@ -318,14 +321,14 @@ func _trigger_clip_starts_in_range(start_position: float, end_position: float, i
 			if clip_start <= start_position + EPSILON or clip_start > end_position + EPSILON:
 				continue
 
+		var sequence_clip_index := _get_sequence_clip_index(clip_index, clip)
 		var process_frame := Engine.get_process_frames()
-		if _last_triggered_clip_index == clip_index and _last_triggered_frame == process_frame:
+		if _last_triggered_clip_index == sequence_clip_index and _last_triggered_frame == process_frame:
 			continue
 
-		_last_triggered_clip_index = clip_index
+		_last_triggered_clip_index = sequence_clip_index
 		_last_triggered_frame = process_frame
-
-		_queue_or_play_clip(clip_index, clip)
+		_queue_or_play_clip(sequence_clip_index, clip)
 
 func _get_random_timing_delay_seconds() -> float:
 	if random_timing_delay_max_seconds <= EPSILON:
@@ -401,8 +404,8 @@ func _play_clip(
 		return
 
 	if _is_track_muted():
-			stop_audio(&"muted")
-			return
+		stop_audio(&"muted")
+		return
 
 	_ensure_audio_player()
 

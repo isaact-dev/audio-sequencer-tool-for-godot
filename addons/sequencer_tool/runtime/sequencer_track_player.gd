@@ -78,7 +78,6 @@ func refresh_runtime_setup() -> void:
 
 func handle_master_sequence_changed(_new_sequence: Resource) -> void:
 	stop_audio()
-	track_index = 0
 	refresh_runtime_setup()
 
 func set_track_index(value: int) -> void:

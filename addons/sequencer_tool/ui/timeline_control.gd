@@ -1169,7 +1169,7 @@ func load_sequence_data(data: Dictionary) -> void:
 	track_effect_chains = loaded_track_effect_chains.duplicate(true) if loaded_track_effect_chains is Dictionary else {}
 
 	var loaded_track_groups = data.get("track_groups", {})
-	track_groups = loaded_track_groups.duplicate(true) if loaded_track_groups is Dictionary else {}
+	track_groups = _sanitize_track_groups(loaded_track_groups) if loaded_track_groups is Dictionary else {}
 
 	clips.clear()
 

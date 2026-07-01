@@ -879,12 +879,14 @@ func _on_group_tracks_popup_id_pressed(track_index: int) -> void:
 		track_indices.erase(track_index)
 	else:
 		track_indices.append(track_index)
-
 	track_indices.sort()
 
-	groups[selected_group_name] = {
-		"track_indices": track_indices
-	}
+	var group_data := {}
+	if groups[selected_group_name] is Dictionary:
+		group_data = (groups[selected_group_name] as Dictionary).duplicate(true)
+
+	group_data["track_indices"] = track_indices
+	groups[selected_group_name] = group_data
 
 	_commit_track_groups_to_timeline(groups)
 	_refresh_selected_group_editor()

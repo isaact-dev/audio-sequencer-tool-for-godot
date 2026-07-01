@@ -4,8 +4,50 @@
 [ext_resource type="Script" uid="uid://byuox4fv4dpo2" path="res://addons/sequencer_tool/ui/timeline_control.gd" id="2_pn50h"]
 [ext_resource type="Script" uid="uid://b3pdqwdfywcy8" path="res://addons/sequencer_tool/ui/audio_preview_controller.gd" id="3_s45hi"]
 [ext_resource type="Script" uid="uid://ct22eaxo3fdn8" path="res://addons/sequencer_tool/runtime/sequencer_master_player.gd" id="4_jd8ou"]
-[ext_resource type="Resource" uid="uid://c1qy4sqg5u0qq" path="res://test_sequence/test_sequence_1.res" id="5_ot30a"]
+[ext_resource type="Script" uid="uid://bflj63qykho6j" path="res://addons/sequencer_tool/runtime/sequencer_sequence.gd" id="5_ot30a"]
 [ext_resource type="Script" uid="uid://rqj1dbbg8utm" path="res://addons/sequencer_tool/runtime/sequencer_track_player.gd" id="5_u5yun"]
+
+[sub_resource type="Resource" id="Resource_nluvw"]
+script = ExtResource("5_ot30a")
+beats_per_bar = 3
+subdivisions_per_beat = 3
+track_count = 7
+track_names = Array[String](["a", "b", "c", "d", "e", "f", "g"])
+track_mutes = Array[bool]([false, false, false, false, false, false, false])
+track_volumes = Array[float]([1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0])
+track_groups = {
+"Group 1": {
+"track_indices": [1]
+}
+}
+clips = Array[Dictionary]([{
+"audio_path": "res://test_audio/kenney_digital-audio/Audio/laser1.ogg",
+"length": 6.6021767,
+"name": "laser",
+"playback_speed": 1.0,
+"source_start_offset_seconds": 0.0,
+"start": 0.0,
+"track": 0,
+"volume": 1.15
+}, {
+"audio_path": "res://test_audio/kenney_digital-audio/Audio/lowDown.ogg",
+"length": 4.702040791511536,
+"name": "lowDown",
+"playback_speed": 1.0,
+"source_start_offset_seconds": 0.0,
+"start": 2.0,
+"track": 1,
+"volume": 1.0
+}, {
+"audio_path": "res://test_audio/kenney_digital-audio/Audio/lowThreeTone.ogg",
+"length": 6.112653,
+"name": "lowThreeTone",
+"playback_speed": 1.0,
+"source_start_offset_seconds": 0.0,
+"start": 4.0,
+"track": 2,
+"volume": 1.0
+}])
 
 [node name="sequencer_dock" type="VBoxContainer" unique_id=1044257266]
 anchors_preset = 15
@@ -600,7 +642,9 @@ script = ExtResource("3_s45hi")
 
 [node name="SequencerMasterPlayer" type="Node" parent="." unique_id=194503501]
 script = ExtResource("4_jd8ou")
-sequence = ExtResource("5_ot30a")
+sequence = SubResource("Resource_nluvw")
+initial_active_track_group = &"Group 1"
+internal_track_indices = Array[int]([1, 3])
 metadata/_custom_type_script = "uid://ct22eaxo3fdn8"
 
 [node name="SequencerTrackPlayer" type="Node" parent="." unique_id=452416662]

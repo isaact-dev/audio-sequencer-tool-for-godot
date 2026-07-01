@@ -284,8 +284,8 @@ func _update_active_previews() -> void:
 			continue
 
 		if not _is_track_enabled_for_active_preview_group(track_index):
-					_release_preview_player(player)
-					continue
+			_release_preview_player(player)
+			continue
 
 		if timeline.get_track_muted(track_index):
 			_release_preview_player(player)
