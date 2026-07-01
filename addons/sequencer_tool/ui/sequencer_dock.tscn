@@ -599,9 +599,6 @@ script = ExtResource("3_s45hi")
 
 [node name="SequencerMasterPlayer" type="Node" parent="." unique_id=194503501]
 script = ExtResource("4_jd8ou")
-loop_enabled = null
-internal_track_indices = null
-default_audio_bus = null
 metadata/_custom_type_script = "uid://ct22eaxo3fdn8"
 
 [node name="SequencerTrackPlayer" type="Node" parent="." unique_id=452416662]

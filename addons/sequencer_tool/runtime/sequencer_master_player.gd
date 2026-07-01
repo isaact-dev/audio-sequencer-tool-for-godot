@@ -13,7 +13,28 @@ signal active_track_group_changed(previous_group: StringName, current_group: Str
 signal track_group_fade_started(previous_group: StringName, current_group: StringName, fade_seconds: float)
 signal track_group_fade_completed(previous_group: StringName, current_group: StringName)
 
-@export var sequence: SequencerSequence = null
+@export_group("Sequence")
+@export var sequence: SequencerSequence = null:
+	set(value):
+		if sequence == value:
+			return
+		sequence = value
+		notify_property_list_changed()
+		if is_inside_tree() and not Engine.is_editor_hint():
+			refresh_runtime_setup()
+
+@export_group("Playback")
+@export var autoplay: bool = false
+@export var loop_enabled: bool = false
+@export var initial_active_track_group: StringName = &""
+
+@export_group("Internal Tracks")
+@export var internal_track_indices: Array[int] = []
+
+@export_group("Routing")
+@export var default_audio_bus: StringName = &"Master"
+
+@export_group("Track Group Fades")
 @export var fade_in_curve: Curve = null
 @export var fade_out_curve: Curve = null
 
@@ -21,10 +42,6 @@ var bpm: float = 120.0
 var bars: int = 8
 var beats_per_bar: int = 4
 var subdivisions_per_beat: int = 4
-
-@export var loop_enabled: bool = false
-@export var internal_track_indices: Array[int] = []
-@export var default_audio_bus: StringName = &"Master"
 
 var is_playing: bool = false
 var song_position: float = 0.0
@@ -56,7 +73,17 @@ var _registered_track_player_fade_enabled: Dictionary = {}
 
 func _ready() -> void:
 	set_process(true)
+
+	if not initial_active_track_group.is_empty():
+		if has_track_group(initial_active_track_group):
+			active_track_group = initial_active_track_group
+		else:
+			push_warning("SequencerMasterPlayer: Initial track group does not exist: %s" % str(initial_active_track_group))
+
 	_refresh_internal_track_voices()
+
+	if autoplay:
+		call_deferred("_start_autoplay")
 
 func _process(delta: float) -> void:
 	if not is_playing:
@@ -84,6 +111,10 @@ func _process(delta: float) -> void:
 	_sync_registered_track_players(previous_position, song_position)
 	song_position_changed.emit(previous_position, song_position)
 
+func _start_autoplay() -> void:
+	if autoplay:
+		play()
+
 func play() -> void:
 	if is_playing:
 		return
@@ -110,6 +141,9 @@ func seek_song_position(value: float, trigger_active_clip: bool = false) -> void
 	_seek_registered_track_players(song_position, trigger_active_clip)
 
 	song_position_changed.emit(previous_position, song_position)
+
+func set_initial_active_track_group(group_name: StringName) -> void:
+	initial_active_track_group = group_name
 
 func get_total_subdivisions() -> int:
 	if sequence != null:
@@ -231,11 +265,18 @@ func set_active_track_group(group_name: StringName, fade_seconds: float = -1.0) 
 		_reset_registered_track_player_group_fade_volumes_for_current_group()
 
 func get_active_internal_track_indices() -> Array[int]:
+	var allowed_track_indices := _sanitize_track_indices(internal_track_indices)
 	var group_track_indices := _get_active_track_group_track_indices()
-	if not group_track_indices.is_empty():
-		return group_track_indices
 
-	return _sanitize_track_indices(internal_track_indices)
+	if group_track_indices.is_empty():
+		return allowed_track_indices
+
+	var result: Array[int] = []
+	for track_index in allowed_track_indices:
+		if group_track_indices.has(track_index):
+			result.append(track_index)
+
+	return result
 
 func _sanitize_track_indices(values: Array) -> Array[int]:
 	var result: Array[int] = []
@@ -375,14 +416,11 @@ func refresh_runtime_setup() -> void:
 	_refresh_internal_track_voices()
 	_refresh_registered_track_player_setups()
 
-
 func set_sequence_resource(value: SequencerSequence) -> void:
 	if sequence == value:
 		return
-
 	sequence = value
 	refresh_runtime_setup()
-
 
 func set_internal_track_indices(value: Array[int]) -> void:
 	internal_track_indices = value.duplicate()

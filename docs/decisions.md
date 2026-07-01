@@ -518,3 +518,16 @@ The priority order is:
 
 A track-specific override should always win because it represents an explicit routing decision for that individual track.
 A group bus override should apply only to tracks that do not have their own track override. This makes it possible to route a whole active group through shared processing, while still allowing individual tracks to use their own bus.
+
+## 2026-07-01 — Master internal tracks act as an allow-list for group playback
+
+### Decision
+
+`SequencerMasterPlayer` should treat `internal_track_indices` as the master player's internal playback allow-list.
+When no active track group is selected, the master internally plays the tracks listed in `internal_track_indices`.
+
+When an active track group is selected, the master should only internally play tracks that are both:
+- listed in `internal_track_indices`
+- included in the active group's `track_indices`
+
+The raw `internal_track_indices` inspector field is still not ideal UX. It should be hidden behind better editor UI, for example a named multiselect list of sequence tracks.
