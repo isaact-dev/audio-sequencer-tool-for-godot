@@ -12,15 +12,18 @@ signal clip_stopped(track_index: int, clip_index: int, clip_data: Dictionary, re
 signal active_track_group_changed(previous_group: StringName, current_group: StringName)
 signal track_group_fade_started(previous_group: StringName, current_group: StringName, fade_seconds: float)
 signal track_group_fade_completed(previous_group: StringName, current_group: StringName)
+signal sequence_changed(new_sequence: SequencerSequence)
 
 @export_group("Sequence")
 @export var sequence: SequencerSequence = null:
 	set(value):
 		if sequence == value:
 			return
+
 		sequence = value
-		notify_property_list_changed()
-		if is_inside_tree() and not Engine.is_editor_hint():
+		sequence_changed.emit(sequence)
+
+		if is_inside_tree():
 			refresh_runtime_setup()
 
 @export_group("Playback")
@@ -417,10 +420,7 @@ func refresh_runtime_setup() -> void:
 	_refresh_registered_track_player_setups()
 
 func set_sequence_resource(value: SequencerSequence) -> void:
-	if sequence == value:
-		return
 	sequence = value
-	refresh_runtime_setup()
 
 func set_internal_track_indices(value: Array[int]) -> void:
 	internal_track_indices = value.duplicate()
@@ -732,6 +732,18 @@ func _refresh_registered_track_player_setups() -> void:
 
 		if track_player.has_method("refresh_runtime_setup"):
 			track_player.refresh_runtime_setup()
+
+func _reset_registered_track_players_for_sequence_change() -> void:
+	for i in range(_registered_track_players.size() - 1, -1, -1):
+		var track_player := _registered_track_players[i]
+		if track_player == null or not is_instance_valid(track_player):
+			_registered_track_players.remove_at(i)
+			continue
+
+		if track_player.has_method("handle_master_sequence_changed"):
+			track_player.handle_master_sequence_changed(sequence)
+		elif track_player.has_method("set_track_index"):
+			track_player.set_track_index(0)
 
 func _on_internal_track_voice_clip_started(event_track_index: int, clip_index: int, clip_data: Dictionary, source_voice: Node) -> void:
 	clip_started.emit(event_track_index, clip_index, clip_data, source_voice)

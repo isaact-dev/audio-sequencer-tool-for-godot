@@ -35,7 +35,6 @@ func _process(_delta: float) -> void:
 	_last_options_signature = signature
 	_update_property()
 
-
 func _get_sequence_instance_id() -> int:
 	var edited_object := get_edited_object()
 	if edited_object == null:
@@ -47,15 +46,49 @@ func _get_sequence_instance_id() -> int:
 
 	return sequence.get_instance_id()
 
+func _get_current_property_value() -> Variant:
+	var edited_object := get_edited_object()
+	if edited_object == null or property_name.is_empty():
+		return null
+
+	return edited_object.get(property_name)
+
+func _get_sequence_for_track_options() -> Resource:
+	var edited_object := get_edited_object()
+	if edited_object == null:
+		return null
+
+	var direct_sequence = edited_object.get("sequence")
+	if direct_sequence is Resource:
+		return direct_sequence
+
+	if edited_object is Node:
+		var node := edited_object as Node
+		var master_path = edited_object.get("master_path")
+
+		if master_path is NodePath and not (master_path as NodePath).is_empty():
+			var master_node := node.get_node_or_null(master_path)
+			if master_node != null:
+				var master_sequence = master_node.get("sequence")
+				if master_sequence is Resource:
+					return master_sequence
+
+	var master = edited_object.get("master")
+	if master is Node:
+		var master_sequence = (master as Node).get("sequence")
+		if master_sequence is Resource:
+			return master_sequence
+
+	return null
 
 func _clear_value_for_sequence_change() -> void:
 	if property_name.is_empty():
 		return
-	if option_kind != &"track_group":
-		return
-
-	emit_changed(property_name, &"")
-
+	match option_kind:
+		&"track_group":
+			emit_changed(property_name, &"")
+		&"sequence_track":
+			emit_changed(property_name, 0)
 
 func _build_options_signature() -> String:
 	var edited_object := get_edited_object()
@@ -93,7 +126,21 @@ func _build_options_signature() -> String:
 				sequence_instance_id,
 				",".join(group_names)
 			]
+		&"sequence_track":
+			var sequence := _get_sequence_for_track_options()
+			if sequence == null:
+				return "sequence_track:null"
 
+			var parts: Array[String] = []
+			parts.append("sequence:%s" % str(sequence.get_instance_id()))
+			parts.append("track_count:%d" % int(sequence.get("track_count")))
+
+			var track_names = sequence.get("track_names")
+			if track_names is Array:
+				for track_name in track_names:
+					parts.append(str(track_name))
+
+			return "|".join(parts)
 	return ""
 
 func setup(target_property_name: StringName, target_option_kind: StringName, allow_empty: bool = false, empty_label: String = "None") -> void:
@@ -111,10 +158,10 @@ func _update_property() -> void:
 	if edited_object == null:
 		return
 
-	var current_value := StringName(str(edited_object.get(property_name)))
+	var current_value = _get_current_property_value()
 	_rebuild_options(current_value)
 
-func _rebuild_options(current_value: StringName) -> void:
+func _rebuild_options(current_value: Variant) -> void:
 	_is_updating = true
 	_option_button.clear()
 	_option_values.clear()
@@ -128,19 +175,22 @@ func _rebuild_options(current_value: StringName) -> void:
 			_add_audio_bus_options()
 		&"track_group":
 			_add_track_group_options()
+		&"sequence_track":
+			_add_sequence_track_options()
 
-	if not current_value.is_empty() and not _option_values.has(current_value):
-		_option_button.add_item(str(current_value))
+	if _option_values.is_empty():
+		_option_button.add_item("No options")
 		_option_values.append(current_value)
 
 	var selected_index := 0
 	for i in range(_option_values.size()):
-		if StringName(str(_option_values[i])) == current_value:
+		if _option_values[i] == current_value:
 			selected_index = i
 			break
 
 	if _option_button.item_count > 0:
 		_option_button.select(selected_index)
+
 	_last_options_signature = _build_options_signature()
 	_last_sequence_instance_id = _get_sequence_instance_id()
 	_is_updating = false
@@ -182,6 +232,32 @@ func _add_track_group_options() -> void:
 		var group_value := StringName(group_name)
 		_option_button.add_item(group_name)
 		_option_values.append(group_value)
+
+func _add_sequence_track_options() -> void:
+	var edited_object := get_edited_object()
+	if edited_object == null:
+		return
+
+	var sequence = _get_sequence_for_track_options()
+	if sequence == null:
+		_option_button.add_item("Assign master with sequence first")
+		_option_values.append(0)
+		return
+
+	var track_count := int(sequence.get("track_count"))
+	var track_names: Array = []
+
+	var sequence_track_names = sequence.get("track_names")
+	if sequence_track_names is Array:
+		track_names = sequence_track_names
+
+	for track_index in range(track_count):
+		var track_label := "Track %d" % [track_index + 1]
+		if track_index < track_names.size():
+			track_label = str(track_names[track_index])
+
+		_option_button.add_item(track_label)
+		_option_values.append(track_index)
 
 func _on_option_selected(index: int) -> void:
 	if _is_updating:

@@ -651,9 +651,9 @@ func _build_track_state_snapshot() -> Dictionary:
 
 	return {
 		"track_count": track_count,
-		"track_names": track_names.duplicate(),
-		"track_mutes": track_mutes.duplicate(),
-		"track_volumes": track_volumes.duplicate(),
+		"track_names": track_names.duplicate(true),
+		"track_mutes": track_mutes.duplicate(true),
+		"track_volumes": track_volumes.duplicate(true),
 		"clips": clips_snapshot,
 		"track_groups": track_groups.duplicate(true),
 	}

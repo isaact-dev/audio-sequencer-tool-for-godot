@@ -76,6 +76,11 @@ func refresh_runtime_setup() -> void:
 	_ensure_voice()
 	_refresh_voice_configuration()
 
+func handle_master_sequence_changed(_new_sequence: Resource) -> void:
+	stop_audio()
+	track_index = 0
+	refresh_runtime_setup()
+
 func set_track_index(value: int) -> void:
 	track_index = max(0, value)
 	refresh_runtime_setup()
@@ -144,6 +149,9 @@ func connect_to_master(value: Node) -> void:
 	if master.has_method("register_track_player"):
 		master.register_track_player(self)
 
+	if master.has_signal("sequence_changed"):
+		master.sequence_changed.connect(_on_master_sequence_changed)
+
 	_refresh_voice_configuration()
 	master_connected.emit(master)
 
@@ -160,6 +168,9 @@ func disconnect_from_master() -> void:
 
 		if previous_master.has_method("unregister_track_player"):
 			previous_master.unregister_track_player(self)
+
+		if previous_master.has_signal("sequence_changed") and previous_master.sequence_changed.is_connected(_on_master_sequence_changed):
+			previous_master.sequence_changed.disconnect(_on_master_sequence_changed)
 
 	if _voice != null and _voice.has_method("stop_audio"):
 		_voice.stop_audio()
@@ -214,3 +225,6 @@ func _on_voice_clip_stopped(event_track_index: int, clip_index: int, clip_data: 
 func _on_master_playback_paused() -> void:
 	if _voice != null and _voice.has_method("stop_audio"):
 		_voice.stop_audio(&"paused")
+
+func _on_master_sequence_changed(new_sequence: Resource) -> void:
+	handle_master_sequence_changed(new_sequence)

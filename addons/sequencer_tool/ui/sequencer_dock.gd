@@ -387,7 +387,10 @@ func _save_sequence_to_path(path: String) -> void:
 		resolved_path += ".res"
 
 	var sequence_resource = timeline.create_sequence_resource(sequence_title)
-	var error := ResourceSaver.save(sequence_resource, resolved_path)
+	sequence_resource.take_over_path(resolved_path)
+
+	var save_flags := ResourceSaver.FLAG_CHANGE_PATH
+	var error := ResourceSaver.save(sequence_resource, resolved_path, save_flags)
 
 	if error != OK:
 		push_error("Failed to save sequence resource: %s" % resolved_path)

@@ -4,6 +4,7 @@
 [ext_resource type="Script" uid="uid://byuox4fv4dpo2" path="res://addons/sequencer_tool/ui/timeline_control.gd" id="2_pn50h"]
 [ext_resource type="Script" uid="uid://b3pdqwdfywcy8" path="res://addons/sequencer_tool/ui/audio_preview_controller.gd" id="3_s45hi"]
 [ext_resource type="Script" uid="uid://ct22eaxo3fdn8" path="res://addons/sequencer_tool/runtime/sequencer_master_player.gd" id="4_jd8ou"]
+[ext_resource type="Resource" uid="uid://c1qy4sqg5u0qq" path="res://test_sequence/test_sequence_1.res" id="5_ot30a"]
 [ext_resource type="Script" uid="uid://rqj1dbbg8utm" path="res://addons/sequencer_tool/runtime/sequencer_track_player.gd" id="5_u5yun"]
 
 [node name="sequencer_dock" type="VBoxContainer" unique_id=1044257266]
@@ -599,10 +600,13 @@ script = ExtResource("3_s45hi")
 
 [node name="SequencerMasterPlayer" type="Node" parent="." unique_id=194503501]
 script = ExtResource("4_jd8ou")
+sequence = ExtResource("5_ot30a")
 metadata/_custom_type_script = "uid://ct22eaxo3fdn8"
 
 [node name="SequencerTrackPlayer" type="Node" parent="." unique_id=452416662]
 script = ExtResource("5_u5yun")
+master_path = NodePath("../SequencerMasterPlayer")
+track_index = 5
 metadata/_custom_type_script = "uid://rqj1dbbg8utm"
 
 [connection signal="pressed" from="ToolBar/ButtonNew" to="." method="_on_button_new_pressed"]

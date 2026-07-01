@@ -3,11 +3,13 @@ extends EditorPlugin
 const SEQUENCER_MASTER_PLAYER_SCRIPT := preload("res://addons/sequencer_tool/runtime/sequencer_master_player.gd")
 const SEQUENCER_TRACK_PLAYER_SCRIPT := preload("res://addons/sequencer_tool/runtime/sequencer_track_player.gd")
 const SEQUENCER_MASTER_PLAYER_INSPECTOR_PLUGIN_SCRIPT := preload("res://addons/sequencer_tool/editor/sequencer_master_player_inspector_plugin.gd")
+const SEQUENCER_TRACK_PLAYER_INSPECTOR_PLUGIN_SCRIPT := preload("res://addons/sequencer_tool/editor/sequencer_track_player_inspector_plugin.gd")
 
 var dock
 var dock_ui
 var editor_file_system: EditorFileSystem = null
 var master_player_inspector_plugin: EditorInspectorPlugin = null
+var track_player_inspector_plugin: EditorInspectorPlugin = null
 
 func _enable_plugin():
 	print("Godot Audio Sequencer Tool enabled")
@@ -79,6 +81,8 @@ func _enter_tree():
 	)
 
 	master_player_inspector_plugin = SEQUENCER_MASTER_PLAYER_INSPECTOR_PLUGIN_SCRIPT.new()
+	track_player_inspector_plugin = SEQUENCER_TRACK_PLAYER_INSPECTOR_PLUGIN_SCRIPT.new()
+	add_inspector_plugin(track_player_inspector_plugin)
 	add_inspector_plugin(master_player_inspector_plugin)
 
 func _exit_tree():
@@ -90,6 +94,9 @@ func _exit_tree():
 	if master_player_inspector_plugin != null:
 		remove_inspector_plugin(master_player_inspector_plugin)
 		master_player_inspector_plugin = null
+	if track_player_inspector_plugin != null:
+		remove_inspector_plugin(track_player_inspector_plugin)
+		track_player_inspector_plugin = null
 	if dock != null:
 		remove_dock(dock)
 		dock.free()
