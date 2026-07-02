@@ -17,6 +17,7 @@ var random_pitch_offset_max_semitones: float = 0.0
 
 var _audio_player: AudioStreamPlayer = null
 var _audio_stream_cache: Dictionary = {}
+var _missing_audio_bus_warning_keys: Dictionary = {}
 var _active_clip_index: int = -1
 var _active_clip_end_time: float = 0.0
 var _active_clip_data: Dictionary = {}
@@ -129,14 +130,51 @@ func _get_random_pitch_scale_multiplier() -> float:
 func get_effective_volume() -> float:
 	return max(0.0, volume)
 
+func _audio_bus_exists(bus_name: StringName) -> bool:
+	if bus_name.is_empty():
+		return false
+	return AudioServer.get_bus_index(str(bus_name)) != -1
+
+func _get_valid_audio_bus_fallback(fallback_bus: StringName = &"Master") -> StringName:
+	var resolved_fallback := StringName(str(fallback_bus).strip_edges())
+	if _audio_bus_exists(resolved_fallback):
+		return resolved_fallback
+	if _audio_bus_exists(&"Master"):
+		return &"Master"
+	return resolved_fallback
+
+func _warn_missing_audio_bus(bus_name: StringName, fallback_bus: StringName) -> void:
+	if bus_name.is_empty():
+		return
+
+	var warning_key := str(bus_name)
+	if _missing_audio_bus_warning_keys.has(warning_key):
+		return
+
+	_missing_audio_bus_warning_keys[warning_key] = true
+	push_warning(
+		"SequencerAudioTrackVoice: Audio bus does not exist: %s. Falling back to %s." % [
+			str(bus_name),
+			str(fallback_bus)
+		]
+	)
+
 func resolve_audio_bus() -> StringName:
+	var fallback_bus := _get_valid_audio_bus_fallback(&"Master")
+
 	if not audio_bus_override.is_empty():
-		return audio_bus_override
+		if _audio_bus_exists(audio_bus_override):
+			return audio_bus_override
+		_warn_missing_audio_bus(audio_bus_override, fallback_bus)
 
 	if master != null and master.has_method("resolve_track_bus"):
-		return master.resolve_track_bus(track_index)
+		var master_bus := StringName(str(master.resolve_track_bus(track_index)).strip_edges())
+		if _audio_bus_exists(master_bus):
+			return master_bus
+		if not master_bus.is_empty():
+			_warn_missing_audio_bus(master_bus, fallback_bus)
 
-	return &"Master"
+	return fallback_bus
 
 func _ensure_audio_player() -> void:
 	if _audio_player != null and is_instance_valid(_audio_player):

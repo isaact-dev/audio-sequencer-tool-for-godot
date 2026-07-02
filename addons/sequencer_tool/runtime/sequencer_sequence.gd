@@ -30,6 +30,12 @@ func get_total_subdivisions() -> int:
 func get_subdivisions_per_second() -> float:
 	return (max(1.0, bpm) / 60.0) * float(max(1, subdivisions_per_beat))
 
+func get_duration_seconds() -> float:
+	var subdivisions_per_second := get_subdivisions_per_second()
+	if subdivisions_per_second <= 0.0:
+		return 0.0
+	return float(get_total_subdivisions()) / subdivisions_per_second
+
 func get_track_muted(track_index: int) -> bool:
 	if track_index < 0 or track_index >= track_mutes.size():
 		return false

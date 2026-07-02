@@ -54,6 +54,7 @@ var track_groups: Dictionary = {}
 var track_group_fade_seconds: float = 1.0
 
 var track_bus_overrides: Dictionary = {}
+var _missing_audio_bus_warning_keys: Dictionary = {}
 var _registered_track_players: Array[Node] = []
 var _internal_track_voices: Dictionary = {}
 var _internal_track_indices_signature: String = ""
@@ -133,6 +134,13 @@ func pause() -> void:
 	_stop_internal_track_voices()
 	playback_paused.emit()
 
+func play_from_start(trigger_active_clip: bool = false) -> void:
+	seek_song_position(0.0, trigger_active_clip)
+	play()
+
+func set_loop_enabled(value: bool) -> void:
+	loop_enabled = value
+
 func set_song_position(value: float) -> void:
 	seek_song_position(value, false)
 
@@ -144,6 +152,12 @@ func seek_song_position(value: float, trigger_active_clip: bool = false) -> void
 	_seek_registered_track_players(song_position, trigger_active_clip)
 
 	song_position_changed.emit(previous_position, song_position)
+
+func set_song_position_seconds(seconds: float) -> void:
+	seek_song_position_seconds(seconds, false)
+
+func seek_song_position_seconds(seconds: float, trigger_active_clip: bool = false) -> void:
+	seek_song_position(seconds_to_subdivisions(seconds), trigger_active_clip)
 
 func set_initial_active_track_group(group_name: StringName) -> void:
 	initial_active_track_group = group_name
@@ -159,6 +173,27 @@ func _get_subdivisions_per_second() -> float:
 		return sequence.get_subdivisions_per_second()
 
 	return (max(1.0, bpm) / 60.0) * float(max(1, subdivisions_per_beat))
+
+func get_song_position() -> float:
+	return song_position
+
+func get_song_position_seconds() -> float:
+	return subdivisions_to_seconds(song_position)
+
+func get_song_duration_subdivisions() -> float:
+	return float(get_total_subdivisions())
+
+func get_song_duration_seconds() -> float:
+	return subdivisions_to_seconds(get_song_duration_subdivisions())
+
+func subdivisions_to_seconds(subdivision_position: float) -> float:
+	var subdivisions_per_second := _get_subdivisions_per_second()
+	if subdivisions_per_second <= 0.0:
+		return 0.0
+	return max(0.0, subdivision_position) / subdivisions_per_second
+
+func seconds_to_subdivisions(seconds: float) -> float:
+	return max(0.0, seconds) * _get_subdivisions_per_second()
 
 func register_track_player(track_player: Node) -> void:
 	if track_player == null:
@@ -205,25 +240,79 @@ func _set_registered_track_player_group_fade_volume(track_player: Node, value: f
 	if track_player.has_method("set_master_group_fade_volume"):
 		track_player.set_master_group_fade_volume(clamp(value, 0.0, 1.0))
 
+func _audio_bus_exists(bus_name: StringName) -> bool:
+	if bus_name.is_empty():
+		return false
+	return AudioServer.get_bus_index(str(bus_name)) != -1
+
+func _get_valid_audio_bus_fallback(fallback_bus: StringName = &"Master") -> StringName:
+	var resolved_fallback := StringName(str(fallback_bus).strip_edges())
+	if _audio_bus_exists(resolved_fallback):
+		return resolved_fallback
+	if _audio_bus_exists(&"Master"):
+		return &"Master"
+	return resolved_fallback
+
+func _warn_missing_audio_bus(bus_name: StringName, fallback_bus: StringName) -> void:
+	if bus_name.is_empty():
+		return
+
+	var warning_key := str(bus_name)
+	if _missing_audio_bus_warning_keys.has(warning_key):
+		return
+
+	_missing_audio_bus_warning_keys[warning_key] = true
+	push_warning(
+		"SequencerMasterPlayer: Audio bus does not exist: %s. Falling back to %s." % [
+			str(bus_name),
+			str(fallback_bus)
+		]
+	)
+
+func _get_sequence_authored_track_bus_override(track_index: int) -> StringName:
+	if sequence == null:
+		return &""
+
+	var overrides = sequence.get("track_bus_overrides")
+	if not overrides is Dictionary:
+		return &""
+
+	var override_dictionary := overrides as Dictionary
+	if not override_dictionary.has(track_index):
+		return &""
+
+	return StringName(str(override_dictionary[track_index]).strip_edges())
+
 func resolve_track_bus(track_index: int) -> StringName:
+	var fallback_bus := _get_valid_audio_bus_fallback(default_audio_bus)
+
 	if track_bus_overrides.has(track_index):
-		return StringName(str(track_bus_overrides[track_index]))
+		var runtime_bus := StringName(str(track_bus_overrides[track_index]).strip_edges())
+		if _audio_bus_exists(runtime_bus):
+			return runtime_bus
+		if not runtime_bus.is_empty():
+			_warn_missing_audio_bus(runtime_bus, fallback_bus)
 
-	if sequence != null:
-		var sequence_track_bus := sequence.get_track_bus(track_index)
-		var sequence_default_bus := sequence.get("default_audio_bus")
-
-		if not StringName(str(sequence_track_bus)).is_empty() and StringName(str(sequence_track_bus)) != StringName(str(sequence_default_bus)):
-			return sequence_track_bus
+	var authored_track_bus := _get_sequence_authored_track_bus_override(track_index)
+	if not authored_track_bus.is_empty():
+		if _audio_bus_exists(authored_track_bus):
+			return authored_track_bus
+		_warn_missing_audio_bus(authored_track_bus, fallback_bus)
 
 	var group_bus := _get_active_track_group_bus_override()
 	if not group_bus.is_empty():
-		return group_bus
+		if _audio_bus_exists(group_bus):
+			return group_bus
+		_warn_missing_audio_bus(group_bus, fallback_bus)
 
 	if sequence != null:
-		return sequence.get_track_bus(track_index)
+		var sequence_default_bus := StringName(str(sequence.get("default_audio_bus")).strip_edges())
+		if _audio_bus_exists(sequence_default_bus):
+			return sequence_default_bus
+		if not sequence_default_bus.is_empty():
+			_warn_missing_audio_bus(sequence_default_bus, fallback_bus)
 
-	return default_audio_bus
+	return fallback_bus
 
 func set_track_bus_override(track_index: int, bus_name: StringName) -> void:
 	if track_index < 0:

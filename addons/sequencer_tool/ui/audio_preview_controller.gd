@@ -12,6 +12,7 @@ var _preview_players: Array[AudioStreamPlayer] = []
 var _active_previews: Array[Dictionary] = []
 var _audio_stream_cache: Dictionary = {}
 var active_preview_group: StringName = &""
+var _missing_audio_bus_warning_keys: Dictionary = {}
 
 const EPSILON := 0.00001
 const SILENT_VOLUME_DB := -80.0
@@ -98,28 +99,67 @@ func _get_available_source_duration_seconds(audio_stream: AudioStream, start_off
 
 	return source_remaining_seconds / resolved_playback_speed
 
+func _audio_bus_exists(bus_name: StringName) -> bool:
+	if bus_name.is_empty():
+		return false
+	return AudioServer.get_bus_index(str(bus_name)) != -1
+
+func _get_valid_audio_bus_fallback(fallback_bus: StringName = &"Master") -> StringName:
+	var resolved_fallback := StringName(str(fallback_bus).strip_edges())
+	if _audio_bus_exists(resolved_fallback):
+		return resolved_fallback
+	if _audio_bus_exists(&"Master"):
+		return &"Master"
+	return resolved_fallback
+
+func _warn_missing_audio_bus(bus_name: StringName, fallback_bus: StringName) -> void:
+	if bus_name.is_empty():
+		return
+
+	var warning_key := str(bus_name)
+	if _missing_audio_bus_warning_keys.has(warning_key):
+		return
+
+	_missing_audio_bus_warning_keys[warning_key] = true
+	push_warning(
+		"AudioPreviewController: Audio bus does not exist: %s. Falling back to %s." % [
+			str(bus_name),
+			str(fallback_bus)
+		]
+	)
+
 func _resolve_track_preview_bus(track_index: int) -> StringName:
 	if timeline == null:
-		return &"Master"
+		return _get_valid_audio_bus_fallback(&"Master")
 
-	var resolved_bus := &""
+	var fallback_bus := &"Master"
+	if timeline.has_method("get_default_audio_bus"):
+		fallback_bus = timeline.get_default_audio_bus()
+
+	var resolved_fallback := _get_valid_audio_bus_fallback(fallback_bus)
 
 	if timeline.has_method("get_track_bus_override"):
-		resolved_bus = timeline.get_track_bus_override(track_index)
+		var track_bus := StringName(str(timeline.get_track_bus_override(track_index)).strip_edges())
+		if not track_bus.is_empty():
+			if _audio_bus_exists(track_bus):
+				return track_bus
+			_warn_missing_audio_bus(track_bus, resolved_fallback)
 
-	if resolved_bus.is_empty() and _is_track_enabled_for_active_preview_group(track_index):
-		resolved_bus = _get_active_preview_group_bus_override()
+	if _is_track_enabled_for_active_preview_group(track_index):
+		var group_bus := _get_active_preview_group_bus_override()
+		if not group_bus.is_empty():
+			if _audio_bus_exists(group_bus):
+				return group_bus
+			_warn_missing_audio_bus(group_bus, resolved_fallback)
 
-	if resolved_bus.is_empty() and timeline.has_method("get_default_audio_bus"):
-		resolved_bus = timeline.get_default_audio_bus()
+	if timeline.has_method("get_default_audio_bus"):
+		var default_bus := StringName(str(timeline.get_default_audio_bus()).strip_edges())
+		if not default_bus.is_empty():
+			if _audio_bus_exists(default_bus):
+				return default_bus
+			_warn_missing_audio_bus(default_bus, resolved_fallback)
 
-	if resolved_bus.is_empty():
-		resolved_bus = &"Master"
-
-	if AudioServer.get_bus_index(String(resolved_bus)) == -1:
-		return &"Master"
-
-	return resolved_bus
+	return resolved_fallback
 
 func _get_preview_track_groups() -> Dictionary:
 	if timeline == null or not timeline.has_method("get_track_groups"):
