@@ -4,6 +4,7 @@ const SEQUENCER_AUDIO_TRACK_VOICE_SCRIPT := preload("res://addons/sequencer_tool
 
 signal playback_started()
 signal playback_paused()
+signal playback_finished()
 signal song_position_changed(previous_position: float, current_position: float)
 signal track_player_registered(track_player: Node)
 signal track_player_unregistered(track_player: Node)
@@ -38,6 +39,7 @@ signal sequence_changed(new_sequence: SequencerSequence)
 @export var default_audio_bus: StringName = &"Master"
 
 @export_group("Track Group Fades")
+@export_range(0.0, 60.0, 0.01, "or_greater", "suffix:s") var track_group_fade_seconds: float = 1.0
 @export var fade_in_curve: Curve = null
 @export var fade_out_curve: Curve = null
 
@@ -51,7 +53,6 @@ var song_position: float = 0.0
 
 var active_track_group: StringName = &""
 var track_groups: Dictionary = {}
-var track_group_fade_seconds: float = 1.0
 
 var track_bus_overrides: Dictionary = {}
 var _missing_audio_bus_warning_keys: Dictionary = {}
@@ -106,10 +107,9 @@ func _process(delta: float) -> void:
 		else:
 			song_position = total_subdivisions
 			_sync_internal_track_voices(previous_position, song_position)
-			_sync_registered_track_players(previous_position, song_position)
-			song_position_changed.emit(previous_position, song_position)
-			pause()
+			_finish_playback_at_end(previous_position)
 			return
+
 
 	_sync_internal_track_voices(previous_position, song_position)
 	_sync_registered_track_players(previous_position, song_position)
@@ -132,6 +132,17 @@ func pause() -> void:
 
 	is_playing = false
 	_stop_internal_track_voices()
+	playback_paused.emit()
+
+func _finish_playback_at_end(previous_position: float) -> void:
+	if not is_playing:
+		return
+
+	is_playing = false
+	_stop_internal_track_voices()
+	_sync_registered_track_players(previous_position, song_position)
+	song_position_changed.emit(previous_position, song_position)
+	playback_finished.emit()
 	playback_paused.emit()
 
 func play_from_start(trigger_active_clip: bool = false) -> void:
@@ -162,6 +173,9 @@ func seek_song_position_seconds(seconds: float, trigger_active_clip: bool = fals
 func set_initial_active_track_group(group_name: StringName) -> void:
 	initial_active_track_group = group_name
 
+func set_track_group_fade_seconds(value: float) -> void:
+	track_group_fade_seconds = max(0.0, value)
+
 func get_total_subdivisions() -> int:
 	if sequence != null:
 		return sequence.get_total_subdivisions()
@@ -173,6 +187,73 @@ func _get_subdivisions_per_second() -> float:
 		return sequence.get_subdivisions_per_second()
 
 	return (max(1.0, bpm) / 60.0) * float(max(1, subdivisions_per_beat))
+
+func get_sequence_resource() -> Resource:
+	return sequence
+
+func get_track_count() -> int:
+	if sequence != null and sequence.has_method("get_track_count"):
+		return int(sequence.get_track_count())
+
+	if sequence != null:
+		return max(0, int(sequence.get("track_count")))
+
+	return 0
+
+func is_valid_track_index(track_index: int) -> bool:
+	if sequence != null and sequence.has_method("is_valid_track_index"):
+		return bool(sequence.is_valid_track_index(track_index))
+
+	return track_index >= 0 and track_index < get_track_count()
+
+func get_track_name(track_index: int) -> String:
+	if sequence != null and sequence.has_method("get_track_name"):
+		return str(sequence.get_track_name(track_index))
+
+	if not is_valid_track_index(track_index):
+		return ""
+
+	return "Track %d" % [track_index + 1]
+
+func get_track_index_by_name(track_name: String) -> int:
+	if sequence != null and sequence.has_method("get_track_index_by_name"):
+		return int(sequence.get_track_index_by_name(track_name))
+
+	var resolved_track_name := track_name.strip_edges()
+	if resolved_track_name.is_empty():
+		return -1
+
+	for track_index in range(get_track_count()):
+		if get_track_name(track_index) == resolved_track_name:
+			return track_index
+
+	return -1
+
+func get_internal_track_names() -> Array[String]:
+	var result: Array[String] = []
+
+	for track_index in internal_track_indices:
+		var resolved_track_index := int(track_index)
+		if not is_valid_track_index(resolved_track_index):
+			continue
+
+		result.append(get_track_name(resolved_track_index))
+
+	return result
+
+func set_internal_track_names(track_names: Array[String]) -> void:
+	var resolved_indices: Array[int] = []
+
+	for track_name in track_names:
+		var resolved_track_index := get_track_index_by_name(track_name)
+		if resolved_track_index < 0:
+			continue
+		if resolved_indices.has(resolved_track_index):
+			continue
+
+		resolved_indices.append(resolved_track_index)
+
+	set_internal_track_indices(resolved_indices)
 
 func get_song_position() -> float:
 	return song_position
@@ -343,11 +424,11 @@ func set_active_track_group(group_name: StringName, fade_seconds: float = -1.0) 
 		active_track_group_changed.emit(previous_group, active_track_group)
 
 	if fade_seconds >= 0.0:
-		track_group_fade_seconds = fade_seconds
+		track_group_fade_seconds = max(0.0, fade_seconds)
 
-	var resolved_fade_seconds := track_group_fade_seconds
+	var resolved_fade_seconds := max(0.0, track_group_fade_seconds)
 	if fade_seconds >= 0.0:
-		resolved_fade_seconds = fade_seconds
+		resolved_fade_seconds = max(0.0, fade_seconds)
 
 	if is_playing and resolved_fade_seconds > 0.0:
 		_begin_internal_track_group_fade(resolved_fade_seconds, previous_group, active_track_group)
@@ -410,6 +491,9 @@ func _is_track_active_in_current_group(track_index: int) -> bool:
 func get_active_track_group() -> StringName:
 	return active_track_group
 
+func get_active_track_group_bus_override() -> StringName:
+	return _get_active_track_group_bus_override()
+
 func clear_active_track_group(fade_seconds: float = -1.0) -> void:
 	set_active_track_group(&"", fade_seconds)
 
@@ -462,6 +546,114 @@ func _get_registered_track_player_track_index(track_player: Node) -> int:
 
 	return int(value)
 
+func get_clip_count() -> int:
+	if sequence != null and sequence.has_method("get_clip_count"):
+		return int(sequence.get_clip_count())
+
+	if sequence != null:
+		var sequence_clips = sequence.get("clips")
+		if sequence_clips is Array:
+			return (sequence_clips as Array).size()
+
+	return 0
+
+func is_valid_clip_index(clip_index: int) -> bool:
+	if sequence != null and sequence.has_method("is_valid_clip_index"):
+		return bool(sequence.is_valid_clip_index(clip_index))
+
+	return clip_index >= 0 and clip_index < get_clip_count()
+
+func get_clip_data(clip_index: int) -> Dictionary:
+	if sequence != null and sequence.has_method("get_clip_data"):
+		return sequence.get_clip_data(clip_index)
+
+	if sequence == null:
+		return {}
+
+	var sequence_clips = sequence.get("clips")
+	if not sequence_clips is Array:
+		return {}
+
+	var clips_array := sequence_clips as Array
+	if clip_index < 0 or clip_index >= clips_array.size():
+		return {}
+
+	var clip = clips_array[clip_index]
+	if clip is Dictionary:
+		return (clip as Dictionary).duplicate(true)
+
+	return {}
+
+func get_track_clip_indices(track_index: int) -> Array:
+	if sequence != null and sequence.has_method("get_track_clip_indices"):
+		return sequence.get_track_clip_indices(track_index)
+
+	var result: Array[int] = []
+
+	if sequence == null:
+		return result
+
+	var sequence_clips = sequence.get("clips")
+	if not sequence_clips is Array:
+		return result
+
+	var clips_array := sequence_clips as Array
+	for clip_index in range(clips_array.size()):
+		var clip = clips_array[clip_index]
+		if not clip is Dictionary:
+			continue
+		if int((clip as Dictionary).get("track", -1)) != track_index:
+			continue
+		result.append(clip_index)
+
+	return result
+
+func get_clip_name(clip_index: int) -> String:
+	if sequence != null and sequence.has_method("get_clip_name"):
+		return str(sequence.get_clip_name(clip_index))
+
+	var clip := get_clip_data(clip_index)
+	if clip.is_empty():
+		return ""
+
+	return str(clip.get("name", "Clip"))
+
+func get_clip_track_index(clip_index: int) -> int:
+	if sequence != null and sequence.has_method("get_clip_track_index"):
+		return int(sequence.get_clip_track_index(clip_index))
+
+	var clip := get_clip_data(clip_index)
+	if clip.is_empty():
+		return -1
+
+	return int(clip.get("track", -1))
+
+func get_clip_start(clip_index: int) -> float:
+	if sequence != null and sequence.has_method("get_clip_start"):
+		return float(sequence.get_clip_start(clip_index))
+
+	var clip := get_clip_data(clip_index)
+	if clip.is_empty():
+		return 0.0
+
+	return max(0.0, float(clip.get("start", 0.0)))
+
+func get_clip_length(clip_index: int) -> float:
+	if sequence != null and sequence.has_method("get_clip_length"):
+		return float(sequence.get_clip_length(clip_index))
+
+	var clip := get_clip_data(clip_index)
+	if clip.is_empty():
+		return 0.0
+
+	return max(0.0, float(clip.get("length", 0.0)))
+
+func get_clip_end(clip_index: int) -> float:
+	if sequence != null and sequence.has_method("get_clip_end"):
+		return float(sequence.get_clip_end(clip_index))
+
+	return get_clip_start(clip_index) + get_clip_length(clip_index)
+
 func _is_registered_track_player_active_in_current_group(track_player: Node) -> bool:
 	var track_index := _get_registered_track_player_track_index(track_player)
 	return _is_track_active_in_current_group(track_index)
@@ -501,6 +693,23 @@ func _get_active_track_group_bus_override() -> StringName:
 		return &""
 
 	var group_data = groups[active_track_group]
+	if not group_data is Dictionary:
+		return &""
+
+	return StringName(str((group_data as Dictionary).get("bus_override", "")).strip_edges())
+
+func get_track_group_bus_override(group_name: StringName) -> StringName:
+	if group_name.is_empty():
+		return &""
+
+	if sequence != null and sequence.has_method("get_track_group_bus_override"):
+		return sequence.get_track_group_bus_override(group_name)
+
+	var groups := _get_active_track_groups()
+	if not groups.has(group_name):
+		return &""
+
+	var group_data = groups[group_name]
 	if not group_data is Dictionary:
 		return &""
 
@@ -796,6 +1005,58 @@ func clear_internal_audio_stream_cache() -> void:
 
 		if voice.has_method("clear_audio_stream_cache"):
 			voice.clear_audio_stream_cache()
+
+func is_internal_track_playing_clip(track_index: int) -> bool:
+	if not _internal_track_voices.has(track_index):
+		return false
+
+	var voice := _internal_track_voices[track_index] as Node
+	if voice == null or not is_instance_valid(voice):
+		return false
+
+	if voice.has_method("is_playing_clip"):
+		return bool(voice.is_playing_clip())
+
+	return false
+
+func get_internal_track_active_clip_index(track_index: int) -> int:
+	if not _internal_track_voices.has(track_index):
+		return -1
+
+	var voice := _internal_track_voices[track_index] as Node
+	if voice == null or not is_instance_valid(voice):
+		return -1
+
+	if voice.has_method("get_active_clip_index"):
+		return int(voice.get_active_clip_index())
+
+	return -1
+
+func get_internal_track_active_clip_data(track_index: int) -> Dictionary:
+	if not _internal_track_voices.has(track_index):
+		return {}
+
+	var voice := _internal_track_voices[track_index] as Node
+	if voice == null or not is_instance_valid(voice):
+		return {}
+
+	if voice.has_method("get_active_clip_data"):
+		return voice.get_active_clip_data()
+
+	return {}
+
+func get_internal_track_active_clip_remaining_seconds(track_index: int) -> float:
+	if not _internal_track_voices.has(track_index):
+		return 0.0
+
+	var voice := _internal_track_voices[track_index] as Node
+	if voice == null or not is_instance_valid(voice):
+		return 0.0
+
+	if voice.has_method("get_active_clip_remaining_seconds"):
+		return float(voice.get_active_clip_remaining_seconds())
+
+	return 0.0
 
 func _seek_registered_track_players(position: float, trigger_active_clip: bool = false) -> void:
 	for i in range(_registered_track_players.size() - 1, -1, -1):

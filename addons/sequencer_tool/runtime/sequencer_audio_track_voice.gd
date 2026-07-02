@@ -115,6 +115,22 @@ func release_audio_player() -> void:
 func clear_audio_stream_cache() -> void:
 	_audio_stream_cache.clear()
 
+func is_playing_clip() -> bool:
+	return _active_clip_index >= 0
+
+func get_active_clip_index() -> int:
+	return _active_clip_index
+
+func get_active_clip_data() -> Dictionary:
+	return _active_clip_data.duplicate(true)
+
+func get_active_clip_remaining_seconds() -> float:
+	if _active_clip_index < 0:
+		return 0.0
+
+	var now_seconds := Time.get_ticks_usec() / 1000000.0
+	return max(0.0, _active_clip_end_time - now_seconds)
+
 func get_pitch_scale_multiplier() -> float:
 	return pow(2.0, pitch_offset_semitones / 12.0)
 

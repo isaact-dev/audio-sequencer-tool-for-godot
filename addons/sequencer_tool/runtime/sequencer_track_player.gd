@@ -35,11 +35,42 @@ var _voice: Node = null
 
 func _ready() -> void:
 	_ensure_voice()
-
 	if not master_path.is_empty():
-		var resolved_master := get_node_or_null(master_path)
-		if resolved_master != null:
-			connect_to_master(resolved_master)
+		set_master_path(master_path)
+
+func set_master_path(value: NodePath) -> bool:
+	master_path = value
+
+	if not is_inside_tree():
+		return false
+
+	if master_path.is_empty():
+		disconnect_from_master()
+		return true
+
+	var resolved_master := get_node_or_null(master_path)
+	if resolved_master == null:
+		disconnect_from_master()
+		return false
+
+	connect_to_master(resolved_master)
+	return true
+
+func connect_to_master_path(value: NodePath) -> bool:
+	return set_master_path(value)
+
+func set_master(value: Node) -> bool:
+	if value == null:
+		disconnect_from_master()
+		master_path = NodePath()
+		return true
+
+	connect_to_master(value)
+
+	if is_inside_tree() and value.is_inside_tree():
+		master_path = get_path_to(value)
+
+	return true
 
 func _ensure_voice() -> void:
 	if _voice != null and is_instance_valid(_voice):
@@ -84,6 +115,21 @@ func set_track_index(value: int) -> void:
 	track_index = max(0, value)
 	refresh_runtime_setup()
 
+func set_track_name(track_name: String) -> bool:
+	var sequence_resource := _get_sequence()
+	if sequence_resource == null:
+		return false
+
+	if not sequence_resource.has_method("get_track_index_by_name"):
+		return false
+
+	var resolved_track_index := int(sequence_resource.get_track_index_by_name(track_name))
+	if resolved_track_index < 0:
+		return false
+
+	set_track_index(resolved_track_index)
+	return true
+
 func set_timing_offset(value: float) -> void:
 	timing_offset_subdivisions = value
 	refresh_runtime_setup()
@@ -123,6 +169,42 @@ func _get_sequence() -> Resource:
 		return sequence_value as Resource
 
 	return null
+
+func is_connected_to_master() -> bool:
+	return master != null and is_instance_valid(master)
+
+func get_master() -> Node:
+	if is_connected_to_master():
+		return master
+
+	return null
+
+func get_sequence_resource() -> Resource:
+	return _get_sequence()
+
+func is_track_index_available() -> bool:
+	var sequence_resource := _get_sequence()
+	if sequence_resource == null:
+		return false
+
+	if sequence_resource.has_method("is_valid_track_index"):
+		return bool(sequence_resource.is_valid_track_index(track_index))
+
+	var sequence_track_count := int(sequence_resource.get("track_count"))
+	return track_index >= 0 and track_index < sequence_track_count
+
+func get_track_name() -> String:
+	var sequence_resource := _get_sequence()
+	if sequence_resource == null:
+		return ""
+
+	if sequence_resource.has_method("get_track_name"):
+		return str(sequence_resource.get_track_name(track_index))
+
+	if not is_track_index_available():
+		return ""
+
+	return "Track %d" % [track_index + 1]
 
 func _exit_tree() -> void:
 	disconnect_from_master()
@@ -214,6 +296,30 @@ func stop_audio() -> void:
 func clear_audio_stream_cache() -> void:
 	if _voice != null and _voice.has_method("clear_audio_stream_cache"):
 		_voice.clear_audio_stream_cache()
+
+func is_playing_clip() -> bool:
+	if _voice != null and _voice.has_method("is_playing_clip"):
+		return bool(_voice.is_playing_clip())
+
+	return false
+
+func get_active_clip_index() -> int:
+	if _voice != null and _voice.has_method("get_active_clip_index"):
+		return int(_voice.get_active_clip_index())
+
+	return -1
+
+func get_active_clip_data() -> Dictionary:
+	if _voice != null and _voice.has_method("get_active_clip_data"):
+		return _voice.get_active_clip_data()
+
+	return {}
+
+func get_active_clip_remaining_seconds() -> float:
+	if _voice != null and _voice.has_method("get_active_clip_remaining_seconds"):
+		return float(_voice.get_active_clip_remaining_seconds())
+
+	return 0.0
 
 func _on_voice_clip_started(event_track_index: int, clip_index: int, clip_data: Dictionary) -> void:
 	clip_started.emit(event_track_index, clip_index, clip_data)

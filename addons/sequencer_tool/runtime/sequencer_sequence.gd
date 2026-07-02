@@ -30,6 +30,34 @@ func get_total_subdivisions() -> int:
 func get_subdivisions_per_second() -> float:
 	return (max(1.0, bpm) / 60.0) * float(max(1, subdivisions_per_beat))
 
+func get_track_count() -> int:
+	return track_count
+
+func is_valid_track_index(track_index: int) -> bool:
+	return track_index >= 0 and track_index < track_count
+
+func get_track_name(track_index: int) -> String:
+	if not is_valid_track_index(track_index):
+		return ""
+
+	if track_index < track_names.size():
+		var track_name := str(track_names[track_index]).strip_edges()
+		if not track_name.is_empty():
+			return track_name
+
+	return "Track %d" % [track_index + 1]
+
+func get_track_index_by_name(track_name: String) -> int:
+	var resolved_track_name := track_name.strip_edges()
+	if resolved_track_name.is_empty():
+		return -1
+
+	for track_index in range(track_count):
+		if get_track_name(track_index) == resolved_track_name:
+			return track_index
+
+	return -1
+
 func get_duration_seconds() -> float:
 	var subdivisions_per_second := get_subdivisions_per_second()
 	if subdivisions_per_second <= 0.0:
@@ -65,6 +93,132 @@ func get_track_clips(track_index: int) -> Array:
 		duplicated_clip["_sequence_clip_index"] = clip_index
 		result.append(duplicated_clip)
 	return result
+
+func has_track_group(group_name: StringName) -> bool:
+	if group_name.is_empty():
+		return true
+
+	return track_groups.has(group_name)
+
+func get_track_group_names() -> Array:
+	var result: Array[StringName] = []
+
+	for group_name in track_groups.keys():
+		result.append(StringName(str(group_name)))
+
+	result.sort()
+	return result
+
+func get_track_group_data(group_name: StringName) -> Dictionary:
+	if group_name.is_empty():
+		return {}
+
+	if not track_groups.has(group_name):
+		return {}
+
+	var group_data = track_groups[group_name]
+	if group_data is Dictionary:
+		return (group_data as Dictionary).duplicate(true)
+
+	return {}
+
+func get_track_group_track_indices(group_name: StringName) -> Array:
+	var result: Array[int] = []
+	var group_data := get_track_group_data(group_name)
+
+	if group_data.is_empty():
+		return result
+
+	var raw_indices = group_data.get("track_indices", [])
+	if raw_indices is Array:
+		for value in raw_indices:
+			var track_index := int(value)
+			if track_index < 0 or track_index >= track_count:
+				continue
+			if result.has(track_index):
+				continue
+			result.append(track_index)
+
+	result.sort()
+	return result
+
+func get_track_group_bus_override(group_name: StringName) -> StringName:
+	var group_data := get_track_group_data(group_name)
+	if group_data.is_empty():
+		return &""
+
+	return StringName(str(group_data.get("bus_override", "")).strip_edges())
+
+func get_clip_count() -> int:
+	return clips.size()
+
+func is_valid_clip_index(clip_index: int) -> bool:
+	return clip_index >= 0 and clip_index < clips.size()
+
+func get_clip_data(clip_index: int) -> Dictionary:
+	if not is_valid_clip_index(clip_index):
+		return {}
+
+	return clips[clip_index].duplicate(true)
+
+func get_all_clips() -> Array:
+	var result: Array[Dictionary] = []
+
+	for clip in clips:
+		if clip is Dictionary:
+			result.append((clip as Dictionary).duplicate(true))
+
+	return result
+
+func get_track_clip_indices(track_index: int) -> Array:
+	var result: Array[int] = []
+
+	if track_index < 0 or track_index >= track_count:
+		return result
+
+	for clip_index in range(clips.size()):
+		var clip := clips[clip_index]
+		if not clip is Dictionary:
+			continue
+		if int(clip.get("track", -1)) != track_index:
+			continue
+		result.append(clip_index)
+
+	return result
+
+func get_clip_name(clip_index: int) -> String:
+	if not is_valid_clip_index(clip_index):
+		return ""
+
+	var clip := clips[clip_index]
+	return str(clip.get("name", "Clip"))
+
+func get_clip_track_index(clip_index: int) -> int:
+	if not is_valid_clip_index(clip_index):
+		return -1
+
+	var clip := clips[clip_index]
+	return int(clip.get("track", -1))
+
+func get_clip_start(clip_index: int) -> float:
+	if not is_valid_clip_index(clip_index):
+		return 0.0
+
+	var clip := clips[clip_index]
+	return max(0.0, float(clip.get("start", 0.0)))
+
+func get_clip_length(clip_index: int) -> float:
+	if not is_valid_clip_index(clip_index):
+		return 0.0
+
+	var clip := clips[clip_index]
+	return max(0.0, float(clip.get("length", 0.0)))
+
+func get_clip_end(clip_index: int) -> float:
+	if not is_valid_clip_index(clip_index):
+		return 0.0
+
+	return get_clip_start(clip_index) + get_clip_length(clip_index)
 
 func _get_sequence_clip_index(fallback_clip_index: int, clip: Dictionary) -> int:
 	return int(clip.get("_sequence_clip_index", fallback_clip_index))
