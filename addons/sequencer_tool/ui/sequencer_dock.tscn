@@ -643,8 +643,12 @@ script = ExtResource("3_s45hi")
 [node name="SequencerMasterPlayer" type="Node" parent="." unique_id=194503501]
 script = ExtResource("4_jd8ou")
 sequence = SubResource("Resource_nluvw")
+autoplay = null
+loop_enabled = null
 initial_active_track_group = &"Group 1"
 internal_track_indices = Array[int]([1, 3])
+default_audio_bus = null
+track_group_fade_seconds = null
 metadata/_custom_type_script = "uid://ct22eaxo3fdn8"
 
 [node name="SequencerTrackPlayer" type="Node" parent="." unique_id=452416662]

@@ -206,6 +206,18 @@ func get_track_name() -> String:
 
 	return "Track %d" % [track_index + 1]
 
+func is_active_in_master_group() -> bool:
+	if master == null or not is_instance_valid(master):
+		return true
+
+	if master.has_method("is_track_active_in_current_group"):
+		return bool(master.is_track_active_in_current_group(track_index))
+
+	return true
+
+func get_master_group_fade_volume() -> float:
+	return clamp(master_group_fade_volume, 0.0, 1.0)
+
 func _exit_tree() -> void:
 	disconnect_from_master()
 

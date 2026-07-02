@@ -488,6 +488,16 @@ func _is_track_active_in_current_group(track_index: int) -> bool:
 	var active_track_indices := _get_active_track_group_track_indices()
 	return active_track_indices.has(track_index)
 
+func is_track_active_in_current_group(track_index: int) -> bool:
+	return _is_track_active_in_current_group(track_index)
+
+func is_track_player_active_in_current_group(track_player: Node) -> bool:
+	if track_player == null or not is_instance_valid(track_player):
+		return false
+
+	var resolved_track_index := _get_registered_track_player_track_index(track_player)
+	return _is_track_active_in_current_group(resolved_track_index)
+
 func get_active_track_group() -> StringName:
 	return active_track_group
 
@@ -496,6 +506,36 @@ func get_active_track_group_bus_override() -> StringName:
 
 func clear_active_track_group(fade_seconds: float = -1.0) -> void:
 	set_active_track_group(&"", fade_seconds)
+
+func is_track_group_fading() -> bool:
+	return _internal_track_voice_fading
+
+func get_track_group_fade_previous_group() -> StringName:
+	return _track_group_fade_previous_group
+
+func get_track_group_fade_current_group() -> StringName:
+	return _track_group_fade_current_group
+
+func get_track_group_fade_elapsed_seconds() -> float:
+	if not _internal_track_voice_fading:
+		return 0.0
+
+	return max(0.0, _internal_track_voice_fade_elapsed)
+
+func get_track_group_fade_duration_seconds() -> float:
+	if not _internal_track_voice_fading:
+		return 0.0
+
+	return max(0.0, _internal_track_voice_fade_duration)
+
+func get_track_group_fade_progress() -> float:
+	if not _internal_track_voice_fading:
+		return 1.0
+
+	if _internal_track_voice_fade_duration <= 0.0:
+		return 1.0
+
+	return clamp(_internal_track_voice_fade_elapsed / _internal_track_voice_fade_duration, 0.0, 1.0)
 
 func has_track_group(group_name: StringName) -> bool:
 	if group_name.is_empty():
@@ -1005,6 +1045,20 @@ func clear_internal_audio_stream_cache() -> void:
 
 		if voice.has_method("clear_audio_stream_cache"):
 			voice.clear_audio_stream_cache()
+
+func clear_registered_track_player_audio_stream_caches() -> void:
+	for i in range(_registered_track_players.size() - 1, -1, -1):
+		var track_player := _registered_track_players[i]
+		if track_player == null or not is_instance_valid(track_player):
+			_registered_track_players.remove_at(i)
+			continue
+
+		if track_player.has_method("clear_audio_stream_cache"):
+			track_player.clear_audio_stream_cache()
+
+func clear_audio_stream_cache() -> void:
+	clear_internal_audio_stream_cache()
+	clear_registered_track_player_audio_stream_caches()
 
 func is_internal_track_playing_clip(track_index: int) -> bool:
 	if not _internal_track_voices.has(track_index):
