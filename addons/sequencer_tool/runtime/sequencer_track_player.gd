@@ -170,6 +170,31 @@ func _get_sequence() -> Resource:
 
 	return null
 
+func _get_master_song_position() -> float:
+	if master == null or not is_instance_valid(master):
+		return 0.0
+
+	if master.has_method("get_song_position"):
+		return float(master.get_song_position())
+
+	var value = master.get("song_position")
+	if value == null:
+		return 0.0
+
+	return max(0.0, float(value))
+
+func sync_to_current_master_position(trigger_active_clip: bool = false) -> bool:
+	if master == null or not is_instance_valid(master):
+		return false
+
+	_ensure_voice()
+	_refresh_voice_configuration()
+
+	var current_position := _get_master_song_position()
+	seek_from_master(current_position, trigger_active_clip)
+
+	return true
+
 func is_connected_to_master() -> bool:
 	return master != null and is_instance_valid(master)
 
@@ -246,6 +271,7 @@ func connect_to_master(value: Node) -> void:
 		master.sequence_changed.connect(_on_master_sequence_changed)
 
 	_refresh_voice_configuration()
+	sync_to_current_master_position(false)
 	master_connected.emit(master)
 
 func disconnect_from_master() -> void:
@@ -268,6 +294,7 @@ func disconnect_from_master() -> void:
 	if _voice != null and _voice.has_method("stop_audio"):
 		_voice.stop_audio()
 
+	master_group_fade_volume = 1.0
 	_refresh_voice_configuration()
 	master_disconnected.emit(previous_master)
 
