@@ -231,6 +231,46 @@ func get_track_name() -> String:
 
 	return "Track %d" % [track_index + 1]
 
+func is_track_muted() -> bool:
+	var sequence_resource := _get_sequence()
+	if sequence_resource == null:
+		return false
+
+	if sequence_resource.has_method("get_track_muted"):
+		return bool(sequence_resource.get_track_muted(track_index))
+
+	return false
+
+func get_track_volume() -> float:
+	var sequence_resource := _get_sequence()
+	if sequence_resource == null:
+		return 1.0
+
+	if sequence_resource.has_method("get_track_volume"):
+		return max(0.0, float(sequence_resource.get_track_volume(track_index)))
+
+	return 1.0
+
+func get_resolved_audio_bus() -> StringName:
+	return resolve_audio_bus()
+
+func get_track_state() -> Dictionary:
+	return {
+		"track_index": track_index,
+		"name": get_track_name(),
+		"track_available": is_track_index_available(),
+		"muted": is_track_muted(),
+		"volume": get_track_volume(),
+		"voice_volume": volume,
+		"master_group_fade_volume": get_master_group_fade_volume(),
+		"effective_voice_volume": get_effective_volume(),
+		"audio_bus_override": audio_bus_override,
+		"resolved_bus": get_resolved_audio_bus(),
+		"active_in_master_group": is_active_in_master_group(),
+		"playing_clip": is_playing_clip(),
+		"active_clip_index": get_active_clip_index()
+	}
+
 func is_active_in_master_group() -> bool:
 	if master == null or not is_instance_valid(master):
 		return true

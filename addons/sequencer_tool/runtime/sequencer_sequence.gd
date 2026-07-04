@@ -307,6 +307,31 @@ func to_dictionary() -> Dictionary:
 		"clips": serialized_clips
 	}
 
+func _make_unique_track_name(requested_name: String, used_names: Dictionary) -> String:
+	var base_name := requested_name.strip_edges()
+	if base_name.is_empty():
+		base_name = "Track"
+
+	var candidate := base_name
+	var suffix := 1
+
+	while used_names.has(candidate):
+		candidate = "%s%d" % [base_name, suffix]
+		suffix += 1
+
+	used_names[candidate] = true
+	return candidate
+
+func _ensure_unique_track_names() -> void:
+	var used_names: Dictionary = {}
+
+	for track_index in range(track_names.size()):
+		var current_name := str(track_names[track_index]).strip_edges()
+		if current_name.is_empty():
+			current_name = "Track %d" % [track_index + 1]
+
+		track_names[track_index] = _make_unique_track_name(current_name, used_names)
+
 func _ensure_track_arrays_size() -> void:
 	while track_names.size() < track_count:
 		track_names.append("Track %d" % [track_names.size() + 1])
@@ -325,3 +350,4 @@ func _ensure_track_arrays_size() -> void:
 
 	while track_volumes.size() > track_count:
 		track_volumes.remove_at(track_volumes.size() - 1)
+	_ensure_unique_track_names()

@@ -159,6 +159,9 @@ func _emit_status_text() -> void:
 	_clear_action_feedback()
 
 func _emit_tracks_changed() -> void:
+	var names_changed := _ensure_unique_track_names()
+	if names_changed:
+		_emit_sequence_changed()
 	tracks_changed.emit(get_track_names())
 
 func _emit_selected_clip_changed() -> void:
@@ -280,6 +283,54 @@ func _is_snap_active() -> bool:
 func _create_default_track_name(track_index: int) -> String:
 	return "Track %d" % [track_index + 1]
 
+func _make_unique_track_name(requested_name: String, used_names: Dictionary) -> String:
+	var base_name := requested_name.strip_edges()
+	if base_name.is_empty():
+		base_name = "Track"
+
+	var candidate := base_name
+	var suffix := 1
+
+	while used_names.has(candidate):
+		candidate = "%s%d" % [base_name, suffix]
+		suffix += 1
+
+	used_names[candidate] = true
+	return candidate
+
+func _get_unique_track_name_for_index(requested_name: String, target_track_index: int) -> String:
+	var used_names: Dictionary = {}
+
+	for track_index in range(track_names.size()):
+		if track_index == target_track_index:
+			continue
+
+		var existing_name := str(track_names[track_index]).strip_edges()
+		if existing_name.is_empty():
+			continue
+
+		used_names[existing_name] = true
+
+	return _make_unique_track_name(requested_name, used_names)
+
+func _ensure_unique_track_names() -> bool:
+	var changed := false
+	var used_names: Dictionary = {}
+
+	for track_index in range(track_names.size()):
+		var current_name := str(track_names[track_index]).strip_edges()
+		if current_name.is_empty():
+			current_name = _create_default_track_name(track_index)
+
+		var unique_name := _make_unique_track_name(current_name, used_names)
+		if str(track_names[track_index]) == unique_name:
+			continue
+
+		track_names[track_index] = unique_name
+		changed = true
+
+	return changed
+
 func _ensure_track_names_size() -> void:
 	while track_names.size() < track_count:
 		track_names.append(_create_default_track_name(track_names.size()))
@@ -298,6 +349,7 @@ func _ensure_track_names_size() -> void:
 
 	while track_colors.size() > track_count:
 		track_colors.remove_at(track_colors.size() - 1)
+	_ensure_unique_track_names()
 
 func get_track_names() -> Array[String]:
 	return track_names.duplicate()
@@ -2866,10 +2918,11 @@ func _rename_track_internal(track_index: int, value: String) -> void:
 		return
 
 	var resolved_name := value.strip_edges()
-	if track_names[track_index] == resolved_name:
+	var unique_name := _get_unique_track_name_for_index(resolved_name, track_index)
+	if track_names[track_index] == unique_name:
 		return
 
-	track_names[track_index] = resolved_name
+	track_names[track_index] = unique_name
 
 func rename_track(track_index: int, value: String) -> void:
 	if _is_editing_blocked_by_playback(true):

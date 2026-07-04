@@ -231,6 +231,75 @@ func get_track_index_by_name(track_name: String) -> int:
 
 	return -1
 
+func is_track_muted(track_index: int) -> bool:
+	if sequence == null:
+		return false
+
+	if sequence.has_method("get_track_muted"):
+		return bool(sequence.get_track_muted(track_index))
+
+	var track_mutes = sequence.get("track_mutes")
+	if not track_mutes is Array:
+		return false
+
+	var mutes_array := track_mutes as Array
+	if track_index < 0 or track_index >= mutes_array.size():
+		return false
+
+	return bool(mutes_array[track_index])
+
+func get_track_volume(track_index: int) -> float:
+	if sequence == null:
+		return 1.0
+
+	if sequence.has_method("get_track_volume"):
+		return max(0.0, float(sequence.get_track_volume(track_index)))
+
+	var track_volumes = sequence.get("track_volumes")
+	if not track_volumes is Array:
+		return 1.0
+
+	var volumes_array := track_volumes as Array
+	if track_index < 0 or track_index >= volumes_array.size():
+		return 1.0
+
+	return max(0.0, float(volumes_array[track_index]))
+
+func is_track_muted_by_name(track_name: String) -> bool:
+	var track_index := get_track_index_by_name(track_name)
+	if track_index < 0:
+		return false
+
+	return is_track_muted(track_index)
+
+func get_track_volume_by_name(track_name: String) -> float:
+	var track_index := get_track_index_by_name(track_name)
+	if track_index < 0:
+		return 1.0
+
+	return get_track_volume(track_index)
+
+func get_track_state(track_index: int) -> Dictionary:
+	if not is_valid_track_index(track_index):
+		return {}
+
+	return {
+		"track_index": track_index,
+		"name": get_track_name(track_index),
+		"muted": is_track_muted(track_index),
+		"volume": get_track_volume(track_index),
+		"runtime_bus_override": get_track_bus_override(track_index),
+		"resolved_bus": resolve_track_bus(track_index),
+		"active_in_current_group": is_track_active_in_current_group(track_index)
+	}
+
+func get_track_state_by_name(track_name: String) -> Dictionary:
+	var track_index := get_track_index_by_name(track_name)
+	if track_index < 0:
+		return {}
+
+	return get_track_state(track_index)
+
 func get_internal_track_names() -> Array[String]:
 	var result: Array[String] = []
 

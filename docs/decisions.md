@@ -531,3 +531,17 @@ When an active track group is selected, the master should only internally play t
 - included in the active group's `track_indices`
 
 The raw `internal_track_indices` inspector field is still not ideal UX. It should be hidden behind better editor UI, for example a named multiselect list of sequence tracks.
+
+## 2026-07-04 — Track names should be unique
+
+### Decision
+
+Tracks should not be allowed to have duplicate names.
+When a track is renamed to a name that already exists, the sequencer should automatically make it unique by appending a number.
+
+Example:
+- Bass
+- Bass1
+- Bass2
+
+Track-name uniqueness should also be enforced during track-name refresh/normalization so unexpected external changes cannot leave duplicate names in the sequence.
