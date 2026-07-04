@@ -671,6 +671,66 @@ func _create_unique_group_name() -> String:
 
 	return candidate
 
+func _make_unique_group_name(requested_name: String, excluded_group_name: String = "") -> String:
+	var base_name := requested_name.strip_edges()
+	if base_name.is_empty():
+		base_name = "Group"
+
+	var groups := _get_track_groups_from_timeline()
+	var used_names: Dictionary = {}
+
+	for group_name_value in groups.keys():
+		var group_name := str(group_name_value)
+		if group_name == excluded_group_name:
+			continue
+		if group_name.strip_edges().is_empty():
+			continue
+		used_names[group_name] = true
+
+	var candidate := base_name
+	var suffix := 1
+
+	while used_names.has(candidate):
+		candidate = "%s%d" % [base_name, suffix]
+		suffix += 1
+
+	return candidate
+
+func _rename_selected_group_to_requested_name(requested_name: String) -> void:
+	if _updating_group_editor_ui:
+		return
+
+	if selected_group_name.is_empty():
+		return
+
+	var groups := _get_track_groups_from_timeline()
+	if not groups.has(selected_group_name):
+		_refresh_groups_panel_ui()
+		return
+
+	var previous_group_name := selected_group_name
+	var resolved_group_name := _make_unique_group_name(requested_name, previous_group_name)
+
+	if resolved_group_name == previous_group_name:
+		_refresh_selected_group_editor()
+		return
+
+	var group_data = groups[previous_group_name]
+	var copied_group_data = group_data.duplicate(true) if group_data is Dictionary else {
+		"track_indices": []
+	}
+
+	groups.erase(previous_group_name)
+	groups[resolved_group_name] = copied_group_data
+
+	selected_group_name = resolved_group_name
+	_commit_track_groups_to_timeline(groups)
+
+	if active_preview_group_name == previous_group_name:
+		_apply_active_preview_group_name(resolved_group_name)
+
+	_refresh_groups_panel_ui()
+
 func _get_group_track_indices(group_name: String) -> Array:
 	var result: Array[int] = []
 	var groups := _get_track_groups_from_timeline()
@@ -1465,18 +1525,25 @@ func _on_group_delete_button_pressed() -> void:
 	if timeline != null and timeline.is_playing:
 		if timeline.has_method("_is_editing_blocked_by_playback"):
 			timeline._is_editing_blocked_by_playback(true)
+		_refresh_groups_panel_ui()
 		return
 
 	var groups := _get_track_groups_from_timeline()
 	if not groups.has(selected_group_name):
+		selected_group_name = ""
+		_refresh_groups_panel_ui()
 		return
 
-	groups.erase(selected_group_name)
-	if active_preview_group_name == selected_group_name:
-		_apply_active_preview_group_name("")
+	var deleted_group_name := selected_group_name
+
+	groups.erase(deleted_group_name)
 	selected_group_name = ""
 
 	_commit_track_groups_to_timeline(groups)
+
+	if active_preview_group_name == deleted_group_name:
+		_apply_active_preview_group_name("")
+
 	_refresh_groups_panel_ui()
 
 func _on_group_row_pressed(group_name: String) -> void:
@@ -1487,37 +1554,7 @@ func _on_group_name_edit_text_submitted(_new_text: String) -> void:
 	group_name_edit.release_focus()
 
 func _on_group_name_edit_focus_exited() -> void:
-	if _updating_group_editor_ui:
-		return
-	if selected_group_name.is_empty():
-		return
-
-	var new_name = group_name_edit.text.strip_edges()
-	if new_name.is_empty():
-		_refresh_selected_group_editor()
-		return
-
-	if new_name == selected_group_name:
-		return
-
-	var groups := _get_track_groups_from_timeline()
-	if not groups.has(selected_group_name):
-		_refresh_groups_panel_ui()
-		return
-
-	if groups.has(new_name):
-		_refresh_selected_group_editor()
-		return
-
-	var group_data = groups[selected_group_name]
-	groups.erase(selected_group_name)
-	groups[new_name] = group_data
-	if active_preview_group_name == selected_group_name:
-		_apply_active_preview_group_name(new_name)
-	selected_group_name = new_name
-
-	_commit_track_groups_to_timeline(groups)
-	_refresh_groups_panel_ui()
+	_rename_selected_group_to_requested_name(group_name_edit.text)
 
 func _on_group_track_membership_toggled(enabled: bool, group_name: String, track_index: int) -> void:
 	if _updating_group_editor_ui:
