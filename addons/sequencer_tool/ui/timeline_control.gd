@@ -491,163 +491,6 @@ func set_track_bus_override(track_index: int, bus_name: StringName) -> void:
 	editor_undo_redo.add_undo_method(self, "_apply_track_bus_override", track_index, previous_bus_name)
 	editor_undo_redo.commit_action()
 
-func _sanitize_track_effect_chain(value: Array) -> Array:
-	var sanitized: Array[AudioEffect] = []
-
-	for effect in value:
-		if effect is AudioEffect:
-			sanitized.append(effect as AudioEffect)
-
-	return sanitized
-
-func get_track_effect_chain(track_index: int) -> Array:
-	var result: Array[AudioEffect] = []
-
-	if track_index < 0 or track_index >= track_count:
-		return result
-
-	if not track_effect_chains.has(track_index):
-		return result
-
-	var stored_chain = track_effect_chains[track_index]
-	if not stored_chain is Array:
-		return result
-
-	for effect in stored_chain:
-		if effect is AudioEffect:
-			result.append(effect as AudioEffect)
-
-	return result
-
-func _apply_track_effect_chain(track_index: int, value: Array) -> void:
-	if track_index < 0 or track_index >= track_count:
-		return
-
-	var sanitized := _sanitize_track_effect_chain(value)
-
-	if sanitized.is_empty():
-		track_effect_chains.erase(track_index)
-	else:
-		track_effect_chains[track_index] = sanitized
-
-	_emit_sequence_changed()
-	_emit_status_text()
-
-func set_track_effect_chain(track_index: int, value: Array) -> void:
-	if track_index < 0 or track_index >= track_count:
-		return
-
-	var previous_chain := get_track_effect_chain(track_index)
-	var resolved_chain := _sanitize_track_effect_chain(value)
-
-	if previous_chain == resolved_chain:
-		return
-
-	if editor_undo_redo == null:
-		_apply_track_effect_chain(track_index, resolved_chain)
-		return
-
-	editor_undo_redo.create_action("Set Track Effect Chain")
-	editor_undo_redo.add_do_method(
-		self,
-		"_apply_track_effect_chain",
-		track_index,
-		resolved_chain
-	)
-	editor_undo_redo.add_undo_method(
-		self,
-		"_apply_track_effect_chain",
-		track_index,
-		previous_chain
-	)
-	editor_undo_redo.commit_action()
-
-func _remap_track_effect_chains_after_track_removed(removed_track_index: int) -> void:
-	var remapped: Dictionary = {}
-
-	for stored_track_index_value in track_effect_chains.keys():
-		var stored_track_index := int(stored_track_index_value)
-
-		if stored_track_index == removed_track_index:
-			continue
-
-		var remapped_track_index := stored_track_index
-		if remapped_track_index > removed_track_index:
-			remapped_track_index -= 1
-
-		var stored_chain = track_effect_chains[stored_track_index_value]
-		if not stored_chain is Array:
-			continue
-
-		var sanitized := _sanitize_track_effect_chain(stored_chain as Array)
-		if sanitized.is_empty():
-			continue
-
-		remapped[remapped_track_index] = sanitized
-
-	track_effect_chains = remapped
-
-func _remap_track_effect_chains_after_track_moved(from_index: int, to_index: int) -> void:
-	if from_index == to_index:
-		return
-
-	var remapped: Dictionary = {}
-
-	for stored_track_index_value in track_effect_chains.keys():
-		var stored_track_index := int(stored_track_index_value)
-		var remapped_track_index := stored_track_index
-
-		if stored_track_index == from_index:
-			remapped_track_index = to_index
-		elif from_index < to_index and stored_track_index > from_index and stored_track_index <= to_index:
-			remapped_track_index -= 1
-		elif from_index > to_index and stored_track_index >= to_index and stored_track_index < from_index:
-			remapped_track_index += 1
-
-		var stored_chain = track_effect_chains[stored_track_index_value]
-		if not stored_chain is Array:
-			continue
-
-		var sanitized := _sanitize_track_effect_chain(stored_chain as Array)
-		if sanitized.is_empty():
-			continue
-
-		remapped[remapped_track_index] = sanitized
-
-	track_effect_chains = remapped
-
-func _remap_track_effect_chains_after_track_duplicated(
-	source_track_index: int,
-	duplicated_track_index: int
-) -> void:
-	var remapped: Dictionary = {}
-	var duplicated_chain: Array[AudioEffect] = []
-
-	for stored_track_index_value in track_effect_chains.keys():
-		var stored_track_index := int(stored_track_index_value)
-		var stored_chain = track_effect_chains[stored_track_index_value]
-
-		if not stored_chain is Array:
-			continue
-
-		var sanitized := _sanitize_track_effect_chain(stored_chain as Array)
-		if sanitized.is_empty():
-			continue
-
-		if stored_track_index == source_track_index:
-			duplicated_chain = sanitized.duplicate()
-
-		var remapped_track_index := stored_track_index
-		if remapped_track_index >= duplicated_track_index:
-			remapped_track_index += 1
-
-		remapped[remapped_track_index] = sanitized
-
-	if not duplicated_chain.is_empty():
-		remapped[duplicated_track_index] = duplicated_chain
-
-	track_effect_chains = remapped
-
 func get_track_groups() -> Dictionary:
 	return track_groups.duplicate(true)
 
@@ -864,7 +707,6 @@ func _build_track_state_snapshot() -> Dictionary:
 		"track_mutes": track_mutes.duplicate(true),
 		"track_volumes": track_volumes.duplicate(true),
 		"clips": clips_snapshot,
-		"track_effect_chains": track_effect_chains.duplicate(true),
 		"track_groups": track_groups.duplicate(true),
 	}
 
@@ -882,24 +724,6 @@ func _apply_track_state_snapshot(state: Dictionary) -> void:
 	track_volumes.clear()
 	for volume in state.get("track_volumes", []):
 		track_volumes.append(max(0.0, float(volume)))
-
-	track_effect_chains.clear()
-	var loaded_track_effect_chains = state.get("track_effect_chains", {})
-	if loaded_track_effect_chains is Dictionary:
-		for stored_track_index_value in loaded_track_effect_chains.keys():
-			var stored_track_index := int(stored_track_index_value)
-			if stored_track_index < 0 or stored_track_index >= track_count:
-				continue
-
-			var stored_chain = loaded_track_effect_chains[stored_track_index_value]
-			if not stored_chain is Array:
-				continue
-
-			var sanitized := _sanitize_track_effect_chain(stored_chain as Array)
-			if sanitized.is_empty():
-				continue
-
-			track_effect_chains[stored_track_index] = sanitized
 
 	var loaded_track_groups = state.get("track_groups", {})
 	track_groups = _sanitize_track_groups(loaded_track_groups) if loaded_track_groups is Dictionary else {}
@@ -1393,24 +1217,8 @@ func load_sequence_data(data: Dictionary) -> void:
 	var loaded_track_bus_overrides = data.get("track_bus_overrides", {})
 	track_bus_overrides = loaded_track_bus_overrides.duplicate(true) if loaded_track_bus_overrides is Dictionary else {}
 
-	track_effect_chains.clear()
-
 	var loaded_track_effect_chains = data.get("track_effect_chains", {})
-	if loaded_track_effect_chains is Dictionary:
-		for stored_track_index_value in loaded_track_effect_chains.keys():
-			var stored_track_index := int(stored_track_index_value)
-			if stored_track_index < 0 or stored_track_index >= track_count:
-				continue
-
-			var stored_chain = loaded_track_effect_chains[stored_track_index_value]
-			if not stored_chain is Array:
-				continue
-
-			var sanitized := _sanitize_track_effect_chain(stored_chain as Array)
-			if sanitized.is_empty():
-				continue
-
-			track_effect_chains[stored_track_index] = sanitized
+	track_effect_chains = loaded_track_effect_chains.duplicate(true) if loaded_track_effect_chains is Dictionary else {}
 
 	var loaded_track_groups = data.get("track_groups", {})
 	track_groups = _sanitize_track_groups(loaded_track_groups) if loaded_track_groups is Dictionary else {}
@@ -3068,7 +2876,6 @@ func _remove_track_internal(track_index: int) -> void:
 	if track_index < 0 or track_index >= track_count:
 		return
 
-	_remap_track_effect_chains_after_track_removed(track_index)
 	var clip_indices_to_remove: Array[int] = []
 
 	for i in range(clips.size()):
@@ -3132,8 +2939,6 @@ func _move_track_internal(from_index: int, to_index: int) -> void:
 	if from_index == to_index:
 		return
 
-	_remap_track_effect_chains_after_track_moved(from_index, to_index)
-
 	var moved_name := track_names[from_index]
 	track_names.remove_at(from_index)
 	track_names.insert(to_index, moved_name)
@@ -3184,10 +2989,7 @@ func _duplicate_track_internal(track_index: int) -> void:
 		duplicated_volume = track_volumes[track_index]
 
 	var insert_index := track_index + 1
-	_remap_track_effect_chains_after_track_duplicated(
-		track_index,
-		insert_index
-	)
+
 	track_count += 1
 	track_names.insert(insert_index, duplicated_name)
 	track_mutes.insert(insert_index, duplicated_mute)

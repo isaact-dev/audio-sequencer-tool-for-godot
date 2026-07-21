@@ -275,17 +275,6 @@ func _sync_timeline_settings_ui() -> void:
 	if timeline.has_method("get_default_audio_bus"):
 		_refresh_default_bus_options(timeline.get_default_audio_bus())
 
-func _append_missing_bus_option(option_button: OptionButton, bus_name: StringName) -> int:
-	var item_index := option_button.item_count
-	option_button.add_item("Missing: %s" % str(bus_name))
-	option_button.set_item_metadata(item_index, bus_name)
-	option_button.set_item_disabled(item_index, true)
-	option_button.set_item_tooltip(
-		item_index,
-		"Audio bus '%s' no longer exists. Select another bus." % str(bus_name)
-	)
-	return item_index
-
 func _refresh_default_bus_options(selected_bus: StringName = &"") -> void:
 	default_bus_option.clear()
 
@@ -294,19 +283,12 @@ func _refresh_default_bus_options(selected_bus: StringName = &"") -> void:
 		default_bus_option.add_item(str(bus_name))
 		default_bus_option.set_item_metadata(default_bus_option.item_count - 1, bus_name)
 
-	var selected_index := -1
-
+	var selected_index := 0
 	for option_index in range(default_bus_option.item_count):
 		var option_bus := default_bus_option.get_item_metadata(option_index) as StringName
 		if option_bus == selected_bus:
 			selected_index = option_index
 			break
-
-	if selected_index == -1 and not selected_bus.is_empty():
-		selected_index = _append_missing_bus_option(default_bus_option, selected_bus)
-
-	if selected_index == -1:
-		selected_index = 0
 
 	default_bus_option.select(selected_index)
 
@@ -614,22 +596,12 @@ func _refresh_track_bus_override_options(selected_bus: StringName = &"") -> void
 		track_bus_override_option.add_item(str(bus_name))
 		track_bus_override_option.set_item_metadata(track_bus_override_option.item_count - 1, bus_name)
 
-	var selected_index := -1
-
+	var selected_index := 0
 	for option_index in range(track_bus_override_option.item_count):
 		var option_bus := track_bus_override_option.get_item_metadata(option_index) as StringName
 		if option_bus == selected_bus:
 			selected_index = option_index
 			break
-
-	if selected_index == -1 and not selected_bus.is_empty():
-		selected_index = _append_missing_bus_option(
-			track_bus_override_option,
-			selected_bus
-		)
-
-	if selected_index == -1:
-		selected_index = 0
 
 	track_bus_override_option.select(selected_index)
 
@@ -937,24 +909,12 @@ func _refresh_group_bus_options(selected_bus: StringName = &"") -> void:
 		group_bus_option.add_item(str(bus_name))
 		group_bus_option.set_item_metadata(group_bus_option.item_count - 1, bus_name)
 
-	var selected_index := -1
-
+	var selected_index := 0
 	for option_index in range(group_bus_option.item_count):
-		var option_bus := StringName(
-			str(group_bus_option.get_item_metadata(option_index))
-		)
+		var option_bus := StringName(str(group_bus_option.get_item_metadata(option_index)))
 		if option_bus == selected_bus:
 			selected_index = option_index
 			break
-
-	if selected_index == -1 and not selected_bus.is_empty():
-		selected_index = _append_missing_bus_option(
-			group_bus_option,
-			selected_bus
-		)
-
-	if selected_index == -1:
-		selected_index = 0
 
 	group_bus_option.select(selected_index)
 
