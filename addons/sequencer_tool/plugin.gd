@@ -10,6 +10,7 @@ var dock_ui
 var editor_file_system: EditorFileSystem = null
 var master_player_inspector_plugin: EditorInspectorPlugin = null
 var track_player_inspector_plugin: EditorInspectorPlugin = null
+var editor_selection: EditorSelection = null
 
 func _enable_plugin():
 	print("Godot Audio Sequencer Tool enabled")
@@ -60,6 +61,16 @@ func _enter_tree():
 	dock_ui.set_editor_undo_redo(get_undo_redo())
 
 	add_dock(dock)
+	editor_selection = get_editor_interface().get_selection()
+	if (
+		editor_selection != null
+		and not editor_selection.selection_changed.is_connected(
+			_on_editor_selection_changed
+		)
+	):
+		editor_selection.selection_changed.connect(
+			_on_editor_selection_changed
+		)
 	editor_file_system = get_editor_interface().get_resource_filesystem()
 	if editor_file_system != null and not editor_file_system.filesystem_changed.is_connected(_on_editor_filesystem_changed):
 		editor_file_system.filesystem_changed.connect(_on_editor_filesystem_changed)
@@ -86,6 +97,17 @@ func _enter_tree():
 	add_inspector_plugin(master_player_inspector_plugin)
 
 func _exit_tree():
+	if (
+		editor_selection != null
+		and editor_selection.selection_changed.is_connected(
+			_on_editor_selection_changed
+		)
+	):
+		editor_selection.selection_changed.disconnect(
+			_on_editor_selection_changed
+		)
+
+	editor_selection = null
 	remove_custom_type("SequencerTrackPlayer")
 	remove_custom_type("SequencerMasterPlayer")
 	if editor_file_system != null and editor_file_system.filesystem_changed.is_connected(_on_editor_filesystem_changed):
@@ -103,6 +125,80 @@ func _exit_tree():
 
 	dock = null
 	dock_ui = null
+
+func _get_sequence_from_master_node(master_node: Node) -> Resource:
+	if master_node == null:
+		return null
+
+	if master_node.get_script() != SEQUENCER_MASTER_PLAYER_SCRIPT:
+		return null
+
+	var sequence = master_node.get("sequence")
+	if sequence is Resource:
+		return sequence as Resource
+
+	return null
+
+func _get_sequence_from_track_player_node(track_player: Node) -> Resource:
+	if track_player == null:
+		return null
+
+	if track_player.get_script() != SEQUENCER_TRACK_PLAYER_SCRIPT:
+		return null
+
+	var master_path = track_player.get("master_path")
+	if master_path is NodePath and not (master_path as NodePath).is_empty():
+		var master_node := track_player.get_node_or_null(
+			master_path as NodePath
+		)
+		var path_sequence := _get_sequence_from_master_node(master_node)
+		if path_sequence != null:
+			return path_sequence
+
+	var connected_master = track_player.get("master")
+	if connected_master is Node:
+		return _get_sequence_from_master_node(connected_master as Node)
+
+	return null
+
+func _get_sequence_from_selected_node(selected_node: Node) -> Resource:
+	if selected_node == null:
+		return null
+
+	if selected_node.get_script() == SEQUENCER_MASTER_PLAYER_SCRIPT:
+		return _get_sequence_from_master_node(selected_node)
+
+	if selected_node.get_script() == SEQUENCER_TRACK_PLAYER_SCRIPT:
+		return _get_sequence_from_track_player_node(selected_node)
+
+	return null
+
+func _on_editor_selection_changed() -> void:
+	if editor_selection == null:
+		return
+
+	if dock == null or dock_ui == null:
+		return
+
+	var selected_nodes := editor_selection.get_selected_nodes()
+	if selected_nodes.size() != 1:
+		return
+
+	var selected_node := selected_nodes[0] as Node
+	if selected_node == null:
+		return
+
+	var sequence_resource := _get_sequence_from_selected_node(
+		selected_node
+	)
+	if sequence_resource == null:
+		return
+
+	if not dock_ui.has_method("open_sequence_resource"):
+		return
+
+	dock_ui.open_sequence_resource(sequence_resource)
+	dock.make_visible()
 
 func _on_editor_filesystem_changed() -> void:
 	if dock_ui != null and dock_ui.has_method("revalidate_audio_clip_lengths_after_file_change"):

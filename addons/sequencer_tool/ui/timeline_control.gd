@@ -312,6 +312,18 @@ func _get_unique_track_name_for_index(requested_name: String, target_track_index
 
 	return _make_unique_track_name(requested_name, used_names)
 
+func _get_unique_new_track_name(requested_name: String) -> String:
+	var used_names: Dictionary = {}
+
+	for track_name in track_names:
+		var existing_name := str(track_name).strip_edges()
+		if existing_name.is_empty():
+			continue
+
+		used_names[existing_name] = true
+
+	return _make_unique_track_name(requested_name, used_names)
+
 func _ensure_unique_track_names() -> bool:
 	var changed := false
 	var used_names: Dictionary = {}
@@ -713,11 +725,14 @@ func _remap_track_groups_after_track_duplicated(source_track_index: int, duplica
 
 func _sanitize_track_groups(value: Dictionary) -> Dictionary:
 	var sanitized: Dictionary = {}
+	var used_names: Dictionary = {}
 
 	for group_name_value in value.keys():
-		var group_name := str(group_name_value).strip_edges()
-		if group_name.is_empty():
-			continue
+		var requested_group_name := str(group_name_value).strip_edges()
+		var group_name := _make_unique_track_group_name(
+			requested_group_name,
+			used_names
+		)
 
 		var group_data = value[group_name_value]
 		var track_indices: Array[int] = []
@@ -754,6 +769,24 @@ func _sanitize_track_groups(value: Dictionary) -> Dictionary:
 		sanitized[group_name] = sanitized_group
 
 	return sanitized
+
+func _make_unique_track_group_name(
+	requested_name: String,
+	used_names: Dictionary
+) -> String:
+	var base_name := requested_name.strip_edges()
+	if base_name.is_empty():
+		base_name = "Group"
+
+	var candidate := base_name
+	var suffix := 1
+
+	while used_names.has(candidate):
+		candidate = "%s%d" % [base_name, suffix]
+		suffix += 1
+
+	used_names[candidate] = true
+	return candidate
 
 func _apply_track_groups(value: Dictionary) -> void:
 	track_groups = _sanitize_track_groups(value)
@@ -2976,8 +3009,11 @@ func _remove_clip_at(clip_index: int) -> void:
 
 #Track commands
 func _add_track_internal() -> void:
+	var requested_name := _create_default_track_name(track_count)
+	var unique_name := _get_unique_new_track_name(requested_name)
+
 	track_count += 1
-	track_names.append(_create_default_track_name(track_count - 1))
+	track_names.append(unique_name)
 	track_mutes.append(false)
 	track_volumes.append(1.0)
 
@@ -3103,7 +3139,9 @@ func _duplicate_track_internal(track_index: int) -> void:
 		return
 
 	var source_name := track_names[track_index]
-	var duplicated_name := "%s Copy" % source_name
+	var duplicated_name := _get_unique_new_track_name(
+		"%s Copy" % source_name
+	)
 	var duplicated_mute := false
 	var duplicated_volume := 1.0
 

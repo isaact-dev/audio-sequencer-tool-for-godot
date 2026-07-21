@@ -323,11 +323,23 @@ func _ensure_unique_track_names() -> void:
 	var used_names: Dictionary = {}
 
 	for track_index in range(track_names.size()):
-		var current_name := str(track_names[track_index]).strip_edges()
-		if current_name.is_empty():
-			current_name = "Track %d" % [track_index + 1]
+		var base_name := track_names[track_index].strip_edges()
+		if base_name.is_empty():
+			base_name = "Track %d" % [track_index + 1]
 
-		track_names[track_index] = _make_unique_track_name(current_name, used_names)
+		var unique_name := base_name
+		var suffix := 1
+
+		while used_names.has(unique_name):
+			unique_name = "%s%d" % [base_name, suffix]
+			suffix += 1
+
+		track_names[track_index] = unique_name
+		used_names[unique_name] = true
+
+func normalize_track_data() -> void:
+	track_count = max(1, track_count)
+	_ensure_track_arrays_size()
 
 func _ensure_track_arrays_size() -> void:
 	while track_names.size() < track_count:

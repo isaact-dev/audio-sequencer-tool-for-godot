@@ -465,9 +465,33 @@ func _save_sequence_to_path(path: String) -> void:
 	current_sequence_path = resolved_path
 	_mark_sequence_clean()
 
+func open_sequence_resource(sequence_resource: Resource) -> void:
+	if sequence_resource == null:
+		return
+
+	if not sequence_resource.has_method("to_dictionary"):
+		return
+
+	var sequence_data = sequence_resource.to_dictionary()
+	timeline.load_sequence_data(sequence_data)
+
+	sequence_title = str(sequence_data.get("title", "")).strip_edges()
+	if sequence_title.is_empty():
+		sequence_title = "Untitled Sequence"
+
+	var resource_path := sequence_resource.resource_path
+	if resource_path.is_empty() or resource_path.contains("::"):
+		current_sequence_path = ""
+	else:
+		current_sequence_path = resource_path
+
+	_refresh_save_dialog_suggested_file()
+	_mark_sequence_clean()
+	_sync_timeline_settings_ui()
+	_update_title_text()
+
 func _load_sequence_from_path(path: String) -> void:
 	var loaded_resource := ResourceLoader.load(path)
-
 	if loaded_resource == null:
 		push_error("Failed to load sequence resource: %s" % path)
 		return
@@ -476,17 +500,13 @@ func _load_sequence_from_path(path: String) -> void:
 		push_error("Invalid sequence resource: %s" % path)
 		return
 
-	var sequence_data = loaded_resource.to_dictionary()
+	open_sequence_resource(loaded_resource)
 
-	timeline.load_sequence_data(sequence_data)
-	sequence_title = str(sequence_data.get("title", "")).strip_edges()
-	if sequence_title.is_empty():
+	if sequence_title.is_empty() or sequence_title == "Untitled Sequence":
 		sequence_title = path.get_file().get_basename()
 
-	_refresh_save_dialog_suggested_file()
 	current_sequence_path = path
 	_mark_sequence_clean()
-	_sync_timeline_settings_ui()
 	_update_title_text()
 
 
@@ -1210,10 +1230,19 @@ func _commit_track_volume_after_focus_change(track_index: int, line_edit: LineEd
 func _commit_track_name_after_focus_change(track_index: int, line_edit: LineEdit) -> void:
 	if line_edit == null or not is_instance_valid(line_edit):
 		return
+	if timeline == null:
+		return
+	if track_index < 0 or track_index >= timeline.track_count:
+		return
+
 	timeline.rename_track(track_index, line_edit.text)
 
+	var track_names = timeline.get_track_names()
+	if track_index < track_names.size():
+		line_edit.text = str(track_names[track_index])
+
 func _on_track_name_submitted(_text: String, track_index: int, line_edit: LineEdit) -> void:
-	timeline.rename_track(track_index, line_edit.text)
+	_commit_track_name_after_focus_change(track_index, line_edit)
 	line_edit.release_focus()
 
 func _on_track_name_focus_exited(track_index: int, line_edit: LineEdit) -> void:
