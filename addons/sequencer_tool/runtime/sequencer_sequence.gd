@@ -19,7 +19,6 @@ const FORMAT_VERSION := 1
 
 @export_storage var default_audio_bus: StringName = &"Master"
 @export_storage var track_bus_overrides: Dictionary = {}
-@export_storage var track_effect_chains: Dictionary = {}
 
 @export_storage var track_groups: Dictionary = {}
 @export_storage var clips: Array[Dictionary] = []
@@ -258,7 +257,6 @@ func load_from_dictionary(data: Dictionary) -> void:
 
 	default_audio_bus = StringName(str(data.get("default_audio_bus", default_audio_bus)))
 	track_bus_overrides = data.get("track_bus_overrides", {}).duplicate(true)
-	track_effect_chains = data.get("track_effect_chains", {}).duplicate(true)
 	track_groups = data.get("track_groups", {}).duplicate(true)
 
 	clips.clear()
@@ -302,7 +300,6 @@ func to_dictionary() -> Dictionary:
 		"track_volumes": track_volumes.duplicate(),
 		"default_audio_bus": str(default_audio_bus),
 		"track_bus_overrides": track_bus_overrides.duplicate(true),
-		"track_effect_chains": track_effect_chains.duplicate(true),
 		"track_groups": track_groups.duplicate(true),
 		"clips": serialized_clips
 	}

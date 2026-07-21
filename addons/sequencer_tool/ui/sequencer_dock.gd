@@ -87,6 +87,7 @@ var drag_insert_after: bool = false
 var selected_group_name: String = ""
 var active_preview_group_name: String = ""
 var _updating_group_editor_ui: bool = false
+var _last_audio_bus_signature: String = ""
 
 const TRACK_ROW_HEIGHT := 28
 const TRACK_ROW_SEPARATION := 3
@@ -173,6 +174,16 @@ func _ready() -> void:
 	_refresh_playback_locked_ui()
 	unsaved_changes_confirm_dialog.add_button("Don't save",true,"DSAVE")
 	_refresh_groups_panel_ui()
+	_last_audio_bus_signature = _build_audio_bus_signature()
+
+func _process(_delta: float) -> void:
+	var audio_bus_signature := _build_audio_bus_signature()
+
+	if audio_bus_signature == _last_audio_bus_signature:
+		return
+
+	_last_audio_bus_signature = audio_bus_signature
+	_refresh_audio_bus_dependent_ui()
 
 func set_editor_undo_redo(value: EditorUndoRedoManager) -> void:
 	editor_undo_redo = value
@@ -274,6 +285,43 @@ func _sync_timeline_settings_ui() -> void:
 
 	if timeline.has_method("get_default_audio_bus"):
 		_refresh_default_bus_options(timeline.get_default_audio_bus())
+
+func _build_audio_bus_signature() -> String:
+	var parts: Array[String] = []
+
+	for bus_index in range(AudioServer.get_bus_count()):
+		parts.append(AudioServer.get_bus_name(bus_index))
+
+	return "|".join(parts)
+
+func _refresh_audio_bus_dependent_ui() -> void:
+	var selected_default_bus := &"Master"
+	if timeline != null and timeline.has_method("get_default_audio_bus"):
+		selected_default_bus = timeline.get_default_audio_bus()
+
+	_refresh_default_bus_options(selected_default_bus)
+
+	if (
+		selected_track_index >= 0
+		and timeline != null
+		and selected_track_index < timeline.track_count
+	):
+		var selected_track_bus := &""
+		if timeline.has_method("get_track_bus_override"):
+			selected_track_bus = timeline.get_track_bus_override(
+				selected_track_index
+			)
+
+		_refresh_track_bus_override_options(selected_track_bus)
+
+	if track_groups_panel != null and track_groups_panel.visible:
+		var selected_group_bus := &""
+		if not selected_group_name.is_empty():
+			selected_group_bus = _get_group_bus_override(
+				selected_group_name
+			)
+
+		_refresh_group_bus_options(selected_group_bus)
 
 func _append_missing_bus_option(option_button: OptionButton, bus_name: StringName) -> int:
 	var item_index := option_button.item_count
@@ -1397,12 +1445,6 @@ func _on_track_delete_pressed(track_index: int) -> void:
 	pending_track_delete_index = track_index
 	track_delete_confirm_dialog.popup_centered()
 
-func _on_track_move_up_pressed(track_index: int) -> void:
-	timeline.move_track(track_index, track_index - 1)
-
-func _on_track_move_down_pressed(track_index: int) -> void:
-	timeline.move_track(track_index, track_index + 1)
-
 func _on_track_mute_toggled(toggled_on: bool, track_index: int) -> void:
 	timeline.set_track_muted(track_index, toggled_on)
 
@@ -1586,45 +1628,11 @@ func _on_group_delete_button_pressed() -> void:
 
 	_refresh_groups_panel_ui()
 
-func _on_group_row_pressed(group_name: String) -> void:
-	selected_group_name = group_name
-	_refresh_groups_panel_ui()
-
 func _on_group_name_edit_text_submitted(_new_text: String) -> void:
 	group_name_edit.release_focus()
 
 func _on_group_name_edit_focus_exited() -> void:
 	_rename_selected_group_to_requested_name(group_name_edit.text)
-
-func _on_group_track_membership_toggled(enabled: bool, group_name: String, track_index: int) -> void:
-	if _updating_group_editor_ui:
-		return
-	if timeline != null and timeline.is_playing:
-		if timeline.has_method("_is_editing_blocked_by_playback"):
-			timeline._is_editing_blocked_by_playback(true)
-		_refresh_selected_group_editor()
-		return
-
-	var groups := _get_track_groups_from_timeline()
-	if not groups.has(group_name):
-		return
-
-	var track_indices := _get_group_track_indices(group_name)
-
-	if enabled:
-		if not track_indices.has(track_index):
-			track_indices.append(track_index)
-	else:
-		track_indices.erase(track_index)
-
-	track_indices.sort()
-
-	groups[group_name] = {
-		"track_indices": track_indices
-	}
-
-	_commit_track_groups_to_timeline(groups)
-	_refresh_groups_panel_ui()
 
 func _on_group_bus_option_item_selected(index: int) -> void:
 	if _updating_group_editor_ui:

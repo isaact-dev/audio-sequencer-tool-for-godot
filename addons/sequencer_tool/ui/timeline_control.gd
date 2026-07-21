@@ -77,7 +77,6 @@ var track_volumes: Array[float] = []
 var track_colors: Array[Color] = []
 var default_audio_bus: StringName = &"Master"
 var track_bus_overrides: Dictionary = {}
-var track_effect_chains: Dictionary = {}
 var track_groups: Dictionary = {}
 
 var selected_clip_outline_color := Color(1.0, 0.9, 0.35, 1.0)
@@ -491,6 +490,110 @@ func set_track_bus_override(track_index: int, bus_name: StringName) -> void:
 	editor_undo_redo.add_undo_method(self, "_apply_track_bus_override", track_index, previous_bus_name)
 	editor_undo_redo.commit_action()
 
+func _remap_track_bus_overrides_after_track_removed(removed_track_index: int) -> void:
+	var remapped_overrides: Dictionary = {}
+
+	for stored_track_index_value in track_bus_overrides.keys():
+		var stored_track_index := int(stored_track_index_value)
+
+		if stored_track_index == removed_track_index:
+			continue
+
+		var remapped_track_index := stored_track_index
+		if remapped_track_index > removed_track_index:
+			remapped_track_index -= 1
+
+		if remapped_track_index < 0 or remapped_track_index >= track_count:
+			continue
+
+		var bus_name := StringName(
+			str(track_bus_overrides[stored_track_index_value]).strip_edges()
+		)
+		if bus_name.is_empty():
+			continue
+
+		remapped_overrides[remapped_track_index] = bus_name
+
+	track_bus_overrides = remapped_overrides
+
+func _remap_track_bus_overrides_after_track_moved(
+	from_index: int,
+	to_index: int
+) -> void:
+	if from_index == to_index:
+		return
+
+	var remapped_overrides: Dictionary = {}
+
+	for stored_track_index_value in track_bus_overrides.keys():
+		var stored_track_index := int(stored_track_index_value)
+		var remapped_track_index := stored_track_index
+
+		if stored_track_index == from_index:
+			remapped_track_index = to_index
+		elif (
+			from_index < to_index
+			and stored_track_index > from_index
+			and stored_track_index <= to_index
+		):
+			remapped_track_index -= 1
+		elif (
+			from_index > to_index
+			and stored_track_index >= to_index
+			and stored_track_index < from_index
+		):
+			remapped_track_index += 1
+
+		if remapped_track_index < 0 or remapped_track_index >= track_count:
+			continue
+
+		var bus_name := StringName(
+			str(track_bus_overrides[stored_track_index_value]).strip_edges()
+		)
+		if bus_name.is_empty():
+			continue
+
+		remapped_overrides[remapped_track_index] = bus_name
+
+	track_bus_overrides = remapped_overrides
+
+func _remap_track_bus_overrides_after_track_duplicated(
+	source_track_index: int,
+	duplicated_track_index: int
+) -> void:
+	var remapped_overrides: Dictionary = {}
+	var duplicated_bus_name: StringName = &""
+
+	for stored_track_index_value in track_bus_overrides.keys():
+		var stored_track_index := int(stored_track_index_value)
+		var bus_name := StringName(
+			str(track_bus_overrides[stored_track_index_value]).strip_edges()
+		)
+
+		if bus_name.is_empty():
+			continue
+
+		if stored_track_index == source_track_index:
+			duplicated_bus_name = bus_name
+
+		var remapped_track_index := stored_track_index
+		if remapped_track_index >= duplicated_track_index:
+			remapped_track_index += 1
+
+		if remapped_track_index < 0 or remapped_track_index >= track_count:
+			continue
+
+		remapped_overrides[remapped_track_index] = bus_name
+
+	if (
+		not duplicated_bus_name.is_empty()
+		and duplicated_track_index >= 0
+		and duplicated_track_index < track_count
+	):
+		remapped_overrides[duplicated_track_index] = duplicated_bus_name
+
+	track_bus_overrides = remapped_overrides
+
 func get_track_groups() -> Dictionary:
 	return track_groups.duplicate(true)
 
@@ -707,6 +810,7 @@ func _build_track_state_snapshot() -> Dictionary:
 		"track_mutes": track_mutes.duplicate(true),
 		"track_volumes": track_volumes.duplicate(true),
 		"clips": clips_snapshot,
+		"track_bus_overrides": track_bus_overrides.duplicate(true),
 		"track_groups": track_groups.duplicate(true),
 	}
 
@@ -724,6 +828,26 @@ func _apply_track_state_snapshot(state: Dictionary) -> void:
 	track_volumes.clear()
 	for volume in state.get("track_volumes", []):
 		track_volumes.append(max(0.0, float(volume)))
+
+	track_bus_overrides.clear()
+
+	var loaded_track_bus_overrides = state.get("track_bus_overrides", {})
+	if loaded_track_bus_overrides is Dictionary:
+		for stored_track_index_value in loaded_track_bus_overrides.keys():
+			var stored_track_index := int(stored_track_index_value)
+
+			if stored_track_index < 0 or stored_track_index >= track_count:
+				continue
+
+			var bus_name := StringName(
+				str(
+					loaded_track_bus_overrides[stored_track_index_value]
+				).strip_edges()
+			)
+			if bus_name.is_empty():
+				continue
+
+			track_bus_overrides[stored_track_index] = bus_name
 
 	var loaded_track_groups = state.get("track_groups", {})
 	track_groups = _sanitize_track_groups(loaded_track_groups) if loaded_track_groups is Dictionary else {}
@@ -1167,7 +1291,6 @@ func get_sequence_data() -> Dictionary:
 		"track_volumes": track_volumes.duplicate(),
 		"default_audio_bus": str(default_audio_bus),
 		"track_bus_overrides": track_bus_overrides.duplicate(true),
-		"track_effect_chains": track_effect_chains.duplicate(true),
 		"track_groups": track_groups.duplicate(true),
 		"clips": serialized_clips
 	}
@@ -1216,9 +1339,6 @@ func load_sequence_data(data: Dictionary) -> void:
 
 	var loaded_track_bus_overrides = data.get("track_bus_overrides", {})
 	track_bus_overrides = loaded_track_bus_overrides.duplicate(true) if loaded_track_bus_overrides is Dictionary else {}
-
-	var loaded_track_effect_chains = data.get("track_effect_chains", {})
-	track_effect_chains = loaded_track_effect_chains.duplicate(true) if loaded_track_effect_chains is Dictionary else {}
 
 	var loaded_track_groups = data.get("track_groups", {})
 	track_groups = _sanitize_track_groups(loaded_track_groups) if loaded_track_groups is Dictionary else {}
@@ -1275,7 +1395,6 @@ func create_new_sequence(new_bars: int, new_beats_per_bar: int, new_subdivisions
 		"track_volumes": [],
 		"default_audio_bus": "Master",
 		"track_bus_overrides": {},
-		"track_effect_chains": {},
 		"track_groups": {},
 		"clips": []
 	})
@@ -2905,13 +3024,16 @@ func _remove_track_internal(track_index: int) -> void:
 	track_volumes.remove_at(track_index)
 	track_count -= 1
 
+	_remap_track_bus_overrides_after_track_removed(track_index)
+	_remap_track_groups_after_track_removed(track_index)
+
 func remove_track(track_index: int) -> void:
 	if _is_editing_blocked_by_playback(true):
 		return
+
 	_commit_track_state_change("Delete Track", func() -> void:
 		_remove_track_internal(track_index)
 	)
-	_remap_track_groups_after_track_removed(track_index)
 
 func _rename_track_internal(track_index: int, value: String) -> void:
 	if track_index < 0 or track_index >= track_names.size():
@@ -2965,14 +3087,16 @@ func _move_track_internal(from_index: int, to_index: int) -> void:
 			clip["track"] = clip_track + 1
 
 		clips[i] = clip
+	_remap_track_bus_overrides_after_track_moved(from_index, to_index)
+	_remap_track_groups_after_track_moved(from_index, to_index)
 
 func move_track(from_index: int, to_index: int) -> void:
 	if _is_editing_blocked_by_playback(true):
 		return
+
 	_commit_track_state_change("Move Track", func() -> void:
 		_move_track_internal(from_index, to_index)
 	)
-	_remap_track_groups_after_track_moved(from_index, to_index)
 
 func _duplicate_track_internal(track_index: int) -> void:
 	if track_index < 0 or track_index >= track_count:
@@ -2991,6 +3115,14 @@ func _duplicate_track_internal(track_index: int) -> void:
 	var insert_index := track_index + 1
 
 	track_count += 1
+	_remap_track_bus_overrides_after_track_duplicated(
+		track_index,
+		insert_index
+	)
+	_remap_track_groups_after_track_duplicated(
+		track_index,
+		insert_index
+	)
 	track_names.insert(insert_index, duplicated_name)
 	track_mutes.insert(insert_index, duplicated_mute)
 	track_volumes.insert(insert_index, duplicated_volume)
@@ -3017,10 +3149,10 @@ func _duplicate_track_internal(track_index: int) -> void:
 func duplicate_track(track_index: int) -> void:
 	if _is_editing_blocked_by_playback(true):
 		return
+
 	_commit_track_state_change("Duplicate Track", func() -> void:
 		_duplicate_track_internal(track_index)
 	)
-	_remap_track_groups_after_track_duplicated(track_index, track_index + 1)
 
 
 #Scroll helpers
