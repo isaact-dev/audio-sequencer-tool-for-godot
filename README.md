@@ -1,4 +1,4 @@
-# Godot Audio Sequencer Tool
+# Audio Sequencer Tool for Godot
 
 A Godot editor plugin for arranging audio clips on a musical timeline and playing authored sequences at runtime.
 
