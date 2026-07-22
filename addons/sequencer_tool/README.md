@@ -51,6 +51,12 @@ The sequencer routes audio through:
 - Volume `0` allows audio to continue running silently.
 - Unmuting a track does not start a clip from the middle.
 
+## Trademark notice
+
+Audio Sequencer Tool for Godot is an independent community project and is not affiliated with or endorsed by the Godot Foundation.
+
+Godot is a trademark of the Godot Foundation.
+
 ## License
 
 This addon is available under the MIT License.

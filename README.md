@@ -359,6 +359,12 @@ When reporting a bug, include:
 
 Report issues at: https://github.com/isaact-dev/audio-sequencer-tool-for-godot/issues
 
+## Trademark notice
+
+Audio Sequencer Tool for Godot is an independent community project and is not affiliated with or endorsed by the Godot Foundation.
+
+Godot is a trademark of the Godot Foundation.
+
 ## License
 
 Godot Audio Sequencer Tool is available under the MIT License.
