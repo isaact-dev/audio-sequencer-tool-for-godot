@@ -545,3 +545,9 @@ Example:
 - Bass2
 
 Track-name uniqueness should also be enforced during track-name refresh/normalization so unexpected external changes cannot leave duplicate names in the sequence.
+
+## 2026-08-18 — TrackPlayers support runtime-controlled fade progress 
+
+### Decision 
+
+'SequencerTrackPlayer' should accept normalized runtime fade progress from gameplay systems such as distance. Increasing progress uses the MasterPlayer's fade_in_curve, while decreasing progress uses fade_out_curve. The value is runtime-only and should not be exported.

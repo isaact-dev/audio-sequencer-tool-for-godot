@@ -1117,6 +1117,25 @@ func _sample_normalized_curve(curve: Curve, t: float, fallback_value: float) -> 
 
 	return clamp(curve.sample_baked(resolved_t), 0.0, 1.0)
 
+func sample_fade_in_progress(progress: float) -> float:
+	var resolved_progress := clamp(progress, 0.0, 1.0)
+
+	return _sample_normalized_curve(
+		fade_in_curve,
+		resolved_progress,
+		resolved_progress
+	)
+
+func sample_fade_out_progress(progress: float) -> float:
+	var resolved_progress := clamp(progress, 0.0, 1.0)
+	var fade_out_time = 1.0 - resolved_progress
+
+	return _sample_normalized_curve(
+		fade_out_curve,
+		fade_out_time,
+		resolved_progress
+	)
+
 func _begin_internal_track_group_fade(fade_seconds: float, previous_group: StringName, current_group: StringName) -> void:
 	_track_group_fade_previous_group = previous_group
 	_track_group_fade_current_group = current_group

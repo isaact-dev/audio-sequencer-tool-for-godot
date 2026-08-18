@@ -80,6 +80,7 @@ Runtime features include:
 - Internal multi-track playback.
 - External one-track players.
 - Runtime track-group switching and fades.
+- Runtime-controlled TrackPlayer fade progress using the Master's existing fade-in and fade-out curves.
 - Custom fade-in and fade-out curves.
 - Per-TrackPlayer timing and pitch offsets.
 - Random timing delay and pitch micro-variation.
@@ -263,6 +264,37 @@ func _ready() -> void:
 ```
 
 A TrackPlayer represents one logical track voice. Use multiple TrackPlayers for stacked or doubled playback.
+
+### Runtime-controlled TrackPlayer fading
+
+A `SequencerTrackPlayer` can receive normalized fade progress from gameplay code:
+
+```gdscript
+track_player.set_fade_progress(progress)
+```
+
+The progress range is:
+
+- `0.0` — silent
+- `1.0` — full volume
+
+When progress increases, the MasterPlayer's `fade_in_curve` is used. When progress decreases, its `fade_out_curve` is used. If the relevant curve is not assigned, the fade is linear.
+
+This can be driven by distance or any other runtime value:
+
+```gdscript
+func _process(_delta: float) -> void:
+	var distance := global_position.distance_to(listener.global_position)
+	var progress := inverse_lerp(
+		max_audible_distance,
+		full_volume_distance,
+		distance
+	)
+
+	track_player.set_fade_progress(progress)
+```
+
+Fade progress is a runtime mix control rather than mute. At `0.0`, clips continue playing silently and remain synchronized, allowing them to become audible again without starting from the middle.
 
 ### Seeking
 

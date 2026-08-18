@@ -29,14 +29,20 @@ signal clip_stopped(track_index: int, clip_index: int, clip_data: Dictionary, re
 @export_range(-2.0, 2.0, 0.01, "or_less", "or_greater", "suffix:st") var random_pitch_offset_max_semitones: float = 0.0
 
 var master_group_fade_volume: float = 1.0
+var fade_progress: float = 1.0
+var external_fade_volume: float = 1.0
+var _external_fade_direction: int = 1
 
 var master: Node = null
 var _voice: Node = null
 
 func _ready() -> void:
 	_ensure_voice()
+
 	if not master_path.is_empty():
 		set_master_path(master_path)
+
+	_update_external_fade_volume()
 
 func set_master_path(value: NodePath) -> bool:
 	master_path = value
@@ -150,11 +156,11 @@ func set_random_pitch_offset_range(min_semitones: float, max_semitones: float) -
 
 func set_voice_volume(value: float) -> void:
 	volume = max(0.0, value)
-	refresh_runtime_setup()
+	_apply_effective_volume_to_voice()
 
 func set_master_group_fade_volume(value: float) -> void:
 	master_group_fade_volume = clamp(value, 0.0, 1.0)
-	refresh_runtime_setup()
+	_apply_effective_volume_to_voice()
 
 func set_audio_bus_override(value: StringName) -> void:
 	audio_bus_override = value
@@ -182,6 +188,60 @@ func _get_master_song_position() -> float:
 		return 0.0
 
 	return max(0.0, float(value))
+
+func _resolve_external_fade_volume(progress: float, direction: int) -> float:
+	var resolved_progress := clamp(progress, 0.0, 1.0)
+
+	if master == null or not is_instance_valid(master):
+		return resolved_progress
+
+	if direction < 0 and master.has_method("sample_fade_out_progress"):
+		return clamp(
+			float(master.sample_fade_out_progress(resolved_progress)),
+			0.0,
+			1.0
+		)
+
+	if direction >= 0 and master.has_method("sample_fade_in_progress"):
+		return clamp(
+			float(master.sample_fade_in_progress(resolved_progress)),
+			0.0,
+			1.0
+		)
+
+	return resolved_progress
+
+func _update_external_fade_volume() -> void:
+	external_fade_volume = _resolve_external_fade_volume(
+		fade_progress,
+		_external_fade_direction
+	)
+
+	_apply_effective_volume_to_voice()
+
+func _apply_effective_volume_to_voice() -> void:
+	if _voice == null or not is_instance_valid(_voice):
+		return
+
+	if _voice.has_method("set_voice_volume"):
+		_voice.set_voice_volume(get_effective_volume())
+
+func set_fade_progress(value: float) -> void:
+	var resolved_progress := clamp(value, 0.0, 1.0)
+
+	if resolved_progress > fade_progress:
+		_external_fade_direction = 1
+	elif resolved_progress < fade_progress:
+		_external_fade_direction = -1
+
+	fade_progress = resolved_progress
+	_update_external_fade_volume()
+
+func get_fade_progress() -> float:
+	return clamp(fade_progress, 0.0, 1.0)
+
+func get_external_fade_volume() -> float:
+	return clamp(external_fade_volume, 0.0, 1.0)
 
 func sync_to_current_master_position(trigger_active_clip: bool = false) -> bool:
 	if master == null or not is_instance_valid(master):
@@ -263,6 +323,8 @@ func get_track_state() -> Dictionary:
 		"volume": get_track_volume(),
 		"voice_volume": volume,
 		"master_group_fade_volume": get_master_group_fade_volume(),
+		"fade_progress": get_fade_progress(),
+		"external_fade_volume": get_external_fade_volume(),
 		"effective_voice_volume": get_effective_volume(),
 		"audio_bus_override": audio_bus_override,
 		"resolved_bus": get_resolved_audio_bus(),
@@ -310,6 +372,7 @@ func connect_to_master(value: Node) -> void:
 	if master.has_signal("sequence_changed"):
 		master.sequence_changed.connect(_on_master_sequence_changed)
 
+	_update_external_fade_volume()
 	_refresh_voice_configuration()
 	sync_to_current_master_position(false)
 	master_connected.emit(master)
@@ -357,7 +420,11 @@ func get_pitch_scale_multiplier() -> float:
 	return pow(2.0, pitch_offset_semitones / 12.0)
 
 func get_effective_volume() -> float:
-	return max(0.0, volume) * clamp(master_group_fade_volume, 0.0, 1.0)
+	return (
+		max(0.0, volume)
+		* clamp(master_group_fade_volume, 0.0, 1.0)
+		* clamp(external_fade_volume, 0.0, 1.0)
+	)
 
 func resolve_audio_bus() -> StringName:
 	if not audio_bus_override.is_empty():

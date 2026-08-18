@@ -146,6 +146,10 @@ func _get_random_pitch_scale_multiplier() -> float:
 func get_effective_volume() -> float:
 	return max(0.0, volume)
 
+func set_voice_volume(value: float) -> void:
+	volume = max(0.0, value)
+	_update_active_audio()
+
 func _audio_bus_exists(bus_name: StringName) -> bool:
 	if bus_name.is_empty():
 		return false
