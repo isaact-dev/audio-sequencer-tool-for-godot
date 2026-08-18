@@ -2,7 +2,7 @@
 
 A Godot editor plugin for arranging audio clips on a musical timeline and playing authored sequences at runtime.
 
-> **Development status:** Pre-release (`v0.1.0`)
+> **Development status:** Pre-release (`v0.2.0`)
 >
 > The core editor and runtime workflows are implemented, but the public API may still change before `v1.0.0`.
 
